@@ -1062,22 +1062,20 @@ local function flyToBestAnimal()
     end)
 end
 
--- ========== ANTI-DEATH & ANTI-KICK ==========
+-- ========== FIXED ANTI-DEATH ==========
 
-local function applyFixedAntiDeath()
+local function applySimpleAntiDeath()
     if not humanoid then return end
     
-    -- Only prevent actual death, don't interfere with other states
     humanoid:GetPropertyChangedSignal("Health"):Connect(function()
         if humanoid.Health <= 0 then
-            humanoid.Health = humanoid.MaxHealth
-            -- Force respawn state without interfering with other systems
-            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            -- Simple character reset
+            local char = player.Character
+            if char then
+                char:BreakJoints()
+            end
         end
     end)
-    
-    -- DON'T disable any states - this is what was causing the conflicts
-    -- Let ragdoll, flying, and jumping work normally
 end
 
 -- ========== PLAYER ESP ==========
@@ -1513,8 +1511,8 @@ end)
 -- Setup anti-negative effects
 setupAntiNegativeEffects()
 
--- Apply FIXED anti-death (minimal interference)
-applyFixedAntiDeath()
+-- Apply simple anti-death with reset
+applySimpleAntiDeath()
 
 -- Enable ragdoll movement
 enableRagdollMovement(character)
@@ -1544,8 +1542,8 @@ player.CharacterAdded:Connect(function(newChar)
     humanoid = character:WaitForChild("Humanoid")
     root = character:WaitForChild("HumanoidRootPart")
     
-    -- Re-apply FIXED anti-death only
-    applyFixedAntiDeath()
+    -- Re-apply simple anti-death
+    applySimpleAntiDeath()
     enableRagdollMovement(character)
     
     if flyToggle then
@@ -1582,14 +1580,3 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
-
-
-
-
-
-
-
-
-
-
-
