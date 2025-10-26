@@ -30,10 +30,7 @@ local settings = {
     customSoundId = "rbxassetid://9167433166",
     hopCount = 0,
     recentVisited = {},
-    notificationDuration = 4,
-    webhookEnabled = false,
-    webhookUrl = "",
-    webhookPingEveryone = false
+    notificationDuration = 4
 }
 
 local guiState = {
@@ -202,85 +199,6 @@ local function showNotification(title, text, duration)
     end)
     
     return notificationFrame
-end
-
--- Webhook function
-local function sendDiscordWebhook(petData)
-    if not settings.webhookEnabled or settings.webhookUrl == "" or settings.webhookUrl == "https://discord.com/api/webhooks/..." then
-        return
-    end
-    
-    local content = settings.webhookPingEveryone and "@everyone" or ""
-    local petName = petData.labels.DisplayName
-    local generation = petData.labels.Generation
-    local rarity = petData.labels.Rarity
-    local mutation = petData.labels.Mutation
-    
-    -- Create join link
-    local joinLink = string.format("https://www.roblox.com/games/%d?jobId=%s", ALLOWED_PLACE_ID, game.JobId)
-    
-    -- Create embed
-    local embed = {
-        {
-            title = "🎯 Target Pet Found!",
-            description = string.format("Found a matching pet in the server!"),
-            color = 65280, -- Green color
-            fields = {
-                {
-                    name = "🐾 Pet Name",
-                    value = petName,
-                    inline = true
-                },
-                {
-                    name = "📊 Generation",
-                    value = generation,
-                    inline = true
-                },
-                {
-                    name = "⭐ Rarity",
-                    value = rarity,
-                    inline = true
-                },
-                {
-                    name = "🔮 Mutation",
-                    value = mutation,
-                    inline = true
-                },
-                {
-                    name = "💰 Per Second",
-                    value = generation, -- This shows the generation value which typically represents $/s
-                    inline = true
-                },
-                {
-                    name = "🔗 Join Link",
-                    value = string.format("[Click to Join](%s)", joinLink),
-                    inline = false
-                }
-            },
-            footer = {
-                text = "Server Hopper • " .. os.date("%Y-%m-%d %H:%M:%S")
-            },
-            thumbnail = {
-                url = "https://cdn.discordapp.com/emojis/1128329622707822662.webp?size=96&quality=lossless"
-            }
-        }
-    }
-    
-    local payload = {
-        content = content,
-        embeds = embed
-    }
-    
-    -- Send webhook request
-    local success, result = pcall(function()
-        return Http:PostAsync(settings.webhookUrl, Http:JSONEncode(payload), Enum.HttpContentType.ApplicationJson)
-    end)
-    
-    if success then
-        print("✅ Webhook sent successfully!")
-    else
-        warn("❌ Failed to send webhook: " .. tostring(result))
-    end
 end
 
 local function checkAPIAvailability()
@@ -867,12 +785,6 @@ local function runServerCheck()
         showNotification("Found", foundText)
         playFoundSound()
         
-        -- Send webhook for each found pet
-        for _, displayResult in ipairs(displayResults) do
-            local entry = displayResult.entry
-            sendDiscordWebhook(entry)
-        end
-        
         monitorFoundPodiums()
         return
     end
@@ -1022,7 +934,7 @@ local function createSettingsGUI()
     screenGui.Parent = playerGui
     
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 250, 0, 350) -- Increased height for webhook settings
+    mainFrame.Size = UDim2.new(0, 250, 0, 320) -- Reduced height since webhook settings removed
     mainFrame.Position = UDim2.new(guiState.position.XScale, guiState.position.XOffset, guiState.position.YScale, guiState.position.YOffset)
     mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
     mainFrame.BorderSizePixel = 0
@@ -1113,7 +1025,7 @@ local function createSettingsGUI()
     scrollFrame.BorderSizePixel = 0
     scrollFrame.ScrollBarThickness = 4
     scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 90)
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 400) -- Increased for webhook settings
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 350) -- Reduced for removed webhook settings
     scrollFrame.Parent = contentFrame
     
     local layout = Instance.new("UIListLayout")
@@ -1124,7 +1036,7 @@ local function createSettingsGUI()
     if isMinimized then
         mainFrame.Size = UDim2.new(0, 250, 0, 30)
     else
-        mainFrame.Size = UDim2.new(0, 250, 0, 350)
+        mainFrame.Size = UDim2.new(0, 250, 0, 320)
     end
     
     minimizeButton.MouseButton1Click:Connect(function()
@@ -1386,13 +1298,8 @@ local function createSettingsGUI()
     local soundInput = createInputField("Sound ID", "rbxassetid://9167433166", settings.customSoundId, 7, "customSoundId", "Sound ID to play when pet is found.")
     local notificationDurationInput = createInputField("Notification Duration (sec)", "4", tostring(settings.notificationDuration), 8, "notificationDuration", "Duration of notifications in seconds.")
     
-    -- Webhook settings
-    local webhookUrlInput = createInputField("Discord Webhook URL", "https://discord.com/api/webhooks/...", settings.webhookUrl, 9, "webhookUrl", "Discord webhook URL for notifications")
-    local webhookEnabledToggle = createToggle("Webhook Enabled", settings.webhookEnabled, 10, "webhookEnabled", "Discord webhook notifications enabled", "Discord webhook notifications disabled")
-    local webhookPingToggle = createToggle("Ping @everyone", settings.webhookPingEveryone, 11, "webhookPingEveryone", "Ping @everyone when pet is found", "Don't ping @everyone")
-    
-    local sortOrderToggle = createSortOrderToggle("Sort Order", settings.sortOrder, 12, "Server sort order: Asc - low to high, Desc - high to low.")
-    local autoStartToggle = createToggle("Auto Start", settings.autoStart, 13, "autoStart", "Auto start script after webhook check enabled.", "Auto start script disabled.")
+    local sortOrderToggle = createSortOrderToggle("Sort Order", settings.sortOrder, 9, "Server sort order: Asc - low to high, Desc - high to low.")
+    local autoStartToggle = createToggle("Auto Start", settings.autoStart, 10, "autoStart", "Auto start script after webhook check enabled.", "Auto start script disabled.")
     
     local fixedBottomFrame = Instance.new("Frame")
     fixedBottomFrame.Name = "FixedBottomFrame"
