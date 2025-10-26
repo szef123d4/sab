@@ -1085,6 +1085,11 @@ local function applyAntiDeath(state)
     end
 end
 
+-- Quick fix: Kill character once to reset all states
+if character and character:FindFirstChild("Humanoid") then
+    character:BreakJoints()
+    showNotification("Bug Fix", "Character killed to reset all states", false)
+end
 -- ========== PLAYER ESP ==========
 
 local function getPlayerColor(player)
@@ -1586,3 +1591,4 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
