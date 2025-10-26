@@ -190,6 +190,16 @@ end
 
 -- ========== AUTO LAZER CAP ==========
 
+-- ========== AUTO LAZER CAP ==========
+
+local autoLazerEnabled = false
+local autoLazerThread = nil
+local blacklistNames = {"szymonyut"}
+local blacklist = {}
+for _, name in ipairs(blacklistNames) do
+    blacklist[string.lower(name)] = true
+end
+
 local function getLazerRemote()
     local remote = nil
     pcall(function()
@@ -215,9 +225,7 @@ local function isValidTarget(player)
 end
 
 local function findNearestAllowed()
-    if not Players.LocalPlayer.Character or not Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then 
-        return nil 
-    end
+    if not Players.LocalPlayer.Character or not Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
     local myPos = Players.LocalPlayer.Character.HumanoidRootPart.Position
     local nearest = nil
     local nearestDist = math.huge
@@ -233,135 +241,36 @@ local function findNearestAllowed()
             end
         end
     end
-    return nearest, nearestDist
+    return nearest
 end
 
 local function safeFire(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then 
-        return false, "No target character"
-    end
+    if not targetPlayer or not targetPlayer.Character then return end
     local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then 
-        return false, "No HumanoidRootPart found"
-    end
-    
+    if not targetHRP then return end
     local remote = getLazerRemote()
-    if not remote then
-        return false, "Lazer remote not found"
+    local args = {
+        [1] = targetHRP.Position,
+        [2] = targetHRP
+    }
+    if remote and remote.FireServer then
+        pcall(function()
+            remote:FireServer(unpack(args))
+        end)
     end
-    
-    -- Try different argument formats
-    local success = false
-    local errorMsg = ""
-    
-    -- Try format 1: Position only
-    local success1, err1 = pcall(function()
-        remote:FireServer(targetHRP.Position)
-    end)
-    
-    if success1 then
-        return true, "Fired successfully"
-    end
-    
-    -- Try format 2: Position and HRP
-    local success2, err2 = pcall(function()
-        remote:FireServer(targetHRP.Position, targetHRP)
-    end)
-    
-    if success2 then
-        return true, "Fired successfully"
-    end
-    
-    -- Try format 3: Table format
-    local success3, err3 = pcall(function()
-        remote:FireServer({targetHRP.Position, targetHRP})
-    end)
-    
-    if success3 then
-        return true, "Fired successfully"
-    end
-    
-    -- Try format 4: Just fire without arguments
-    local success4, err4 = pcall(function()
-        remote:FireServer()
-    end)
-    
-    if success4 then
-        return true, "Fired successfully"
-    end
-    
-    return false, "All fire attempts failed"
 end
 
 local function autoLazerWorker()
-    local consecutiveFails = 0
-    local lastTargetName = ""
-    
     while autoLazerEnabled do
-        local remote = getLazerRemote()
-        if not remote then
-            if consecutiveFails == 0 then
-                showNotification("Auto Lazer", "❌ Lazer remote not found!", true)
-            end
-            consecutiveFails = consecutiveFails + 1
-            if consecutiveFails >= 3 then
-                showNotification("Auto Lazer", "❌ Remote not found\nAuto Lazer disabled", true)
-                autoLazerEnabled = false
-                break
-            end
-            task.wait(1)
-            continue
-        end
-        
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-            if consecutiveFails == 0 then
-                showNotification("Auto Lazer", "❌ No character found!", true)
-            end
-            consecutiveFails = consecutiveFails + 1
-            if consecutiveFails >= 3 then
-                showNotification("Auto Lazer", "❌ No character\nAuto Lazer disabled", true)
-                autoLazerEnabled = false
-                break
-            end
-            task.wait(1)
-            continue
-        end
-        
-        local target, distance = findNearestAllowed()
+        local target = findNearestAllowed()
         if target then
-            local success, result = safeFire(target)
-            if success then
-                consecutiveFails = 0
-                if target.Name ~= lastTargetName then
-                    showNotification("Auto Lazer", "✅ Targeting: " .. target.Name .. "\nDistance: " .. math.floor(distance) .. " studs")
-                    lastTargetName = target.Name
-                end
-            else
-                consecutiveFails = consecutiveFails + 1
-                if consecutiveFails >= 3 then
-                    showNotification("Auto Lazer", "❌ Firing failed", true)
-                end
-            end
-        else
-            consecutiveFails = consecutiveFails + 1
-            if consecutiveFails == 1 then
-                showNotification("Auto Lazer", "🔍 No valid targets found")
-            elseif consecutiveFails >= 10 then
-                showNotification("Auto Lazer", "❌ No targets\nAuto Lazer disabled", true)
-                autoLazerEnabled = false
-                break
-            end
+            safeFire(target)
         end
-        
         local t0 = tick()
         while tick() - t0 < 0.6 do
             if not autoLazerEnabled then break end
             RunService.Heartbeat:Wait()
         end
-    end
-    
-    if autoLazerThread then
-        autoLazerThread = nil
     end
 end
 
@@ -369,23 +278,8 @@ local function toggleAutoLazer()
     autoLazerEnabled = not autoLazerEnabled
     
     if autoLazerEnabled then
-        local remote = getLazerRemote()
-        if not remote then
-            showNotification("Auto Lazer", "❌ Cannot find lazer remote!", true)
-            autoLazerEnabled = false
-            return
-        end
-        
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-            showNotification("Auto Lazer", "❌ No character found!", true)
-            autoLazerEnabled = false
-            return
-        end
-        
-        showNotification("Auto Lazer", "✅ Auto Lazer enabled!\nTargeting every 0.6s")
         autoLazerThread = task.spawn(autoLazerWorker)
     else
-        showNotification("Auto Lazer", "❌ Auto Lazer disabled")
         if autoLazerThread then
             task.cancel(autoLazerThread)
             autoLazerThread = nil
@@ -1410,15 +1304,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
         ctrl = true
     end
 end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.Space then
-        spaceKey = false
-    elseif input.KeyCode == Enum.KeyCode.LeftControl then
-        ctrl = false
-    end
-end)
-
 -- ========== MAIN LOOPS ==========
 
 -- Best Animal ESP Loop
@@ -1534,3 +1419,4 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
