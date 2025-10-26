@@ -1064,6 +1064,28 @@ end
 
 -- ========== ANTI-DEATH & ANTI-KICK ==========
 
+
+local function applyAntiDeath(state)
+    if humanoid then
+        for _, s in pairs({
+            Enum.HumanoidStateType.FallingDown,
+            Enum.HumanoidStateType.Ragdoll,
+            Enum.HumanoidStateType.PlatformStanding,
+            Enum.HumanoidStateType.Seated
+        }) do
+            humanoid:SetStateEnabled(s, not state)
+        end
+        if state then
+            humanoid.Health = humanoid.MaxHealth
+            humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                if humanoid.Health <= 0 then
+                    humanoid.Health = humanoid.MaxHealth
+                end
+            end)
+        end
+    end
+end
+
 -- Safe respawn function
 local function safeCharacterReset()
     if character and character:FindFirstChild("Humanoid") then
@@ -1087,29 +1109,6 @@ end
 
 -- Auto respawn when script executes
 safeCharacterReset()
-
-local function applyAntiDeath(state)
-    if humanoid then
-        for _, s in pairs({
-            Enum.HumanoidStateType.FallingDown,
-            Enum.HumanoidStateType.Ragdoll,
-            Enum.HumanoidStateType.PlatformStanding,
-            Enum.HumanoidStateType.Seated
-        }) do
-            humanoid:SetStateEnabled(s, not state)
-        end
-        if state then
-            humanoid.Health = humanoid.MaxHealth
-            humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-                if humanoid.Health <= 0 then
-                    humanoid.Health = humanoid.MaxHealth
-                end
-            end)
-        end
-    end
-end
-
-
 -- ========== PLAYER ESP ==========
 
 local function getPlayerColor(player)
@@ -1611,6 +1610,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
