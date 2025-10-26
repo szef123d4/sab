@@ -1286,57 +1286,104 @@ end
 
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
--- Configuration
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
-local MIN_ANIMAL_VALUE = 10000000 -- 10M minimum
 
--- Track notified animals per server (animal + server combination)
-local notifiedAnimals = {}
-local lastWebhookCheck = 0
+-- Function to find animal overheads
+local function findAnimalOverheads()
+    local overheads = {}
+    local plotsFolder = game:GetService("Workspace"):FindFirstChild("Plots")
+    if not plotsFolder then return overheads end
+
+    for _, plot in pairs(plotsFolder:GetDescendants()) do
+        if plot.Name == "AnimalOverhead" and plot:IsA("BillboardGui") then
+            local stolenLabel = plot:FindFirstChild("Stolen")
+            local isStolen = stolenLabel and stolenLabel:IsA("TextLabel") and string.upper(stolenLabel.Text) == "FUSING"
+            local displayNameLabel = plot:FindFirstChild("DisplayName")
+            local genLabel = plot:FindFirstChild("Generation")
+            local rarityLabel = plot:FindFirstChild("Rarity")
+            
+            if displayNameLabel and genLabel and rarityLabel and not isStolen then
+                table.insert(overheads, plot)
+            end
+        end
+    end
+    return overheads
+end
+
+-- Function to extract number from generation string
+local function extractNumber(str)
+    if not str then return 0 end
+    local numberStr = str:match("([%d%.]+[kKmMbB]?)") or "0"
+    numberStr = numberStr:gsub("%s", ""):lower()
+    local multiplier = 1
+    if numberStr:find("b") then multiplier = 1e9; numberStr = numberStr:gsub("b","")
+    elseif numberStr:find("m") then multiplier = 1e6; numberStr = numberStr:gsub("m","")
+    elseif numberStr:find("k") then multiplier = 1e3; numberStr = numberStr:gsub("k","") end
+    return (tonumber(numberStr) or 0) * multiplier
+end
+
+-- Function to get animal data
+local function getAnimalData(overhead)
+    if not overhead or not overhead.Parent then return nil end
+    local displayNameLabel = overhead:FindFirstChild("DisplayName")
+    local genLabel = overhead:FindFirstChild("Generation")
+    local rarityLabel = overhead:FindFirstChild("Rarity")
+    
+    if displayNameLabel and genLabel and rarityLabel then
+        return {
+            DisplayName = displayNameLabel.Text,
+            Generation = genLabel.Text,
+            Rarity = rarityLabel.Text,
+            Value = extractNumber(genLabel.Text)
+        }
+    end
+    return nil
+end
 
 -- Function to send Discord webhook
-local function sendDiscordWebhook(animalData, jobId, playersCount)
-    -- Create unique key for this animal IN THIS SERVER
-    local animalKey = animalData.DisplayName .. "_" .. tostring(math.floor(animalData.Value)) .. "_" .. jobId
-    
-    -- Check if we already notified about this animal in this server
-    if notifiedAnimals[animalKey] then
-        return false -- Already notified in this server, don't send again
-    end
-    
+local function sendRealAnimalWebhook()
     local placeId = game.PlaceId
+    local jobId = game.JobId
+    local playersCount = #game.Players:GetPlayers()
     
-    -- Get money per second (estimate based on animal value)
-    local moneyPerSec = math.floor(animalData.Value / 20000) -- Rough estimate
+    -- Find real animals
+    local overheads = findAnimalOverheads()
+    if #overheads == 0 then return end
+    
+    -- Find the highest value animal
+    local bestAnimal = nil
+    local bestValue = 0
+    
+    for _, overhead in pairs(overheads) do
+        local animalData = getAnimalData(overhead)
+        if animalData and animalData.Value > bestValue then
+            bestValue = animalData.Value
+            bestAnimal = animalData
+        end
+    end
+    
+    if not bestAnimal then return end
+    
+    -- Format animal value as money per second
     local moneyPerSecFormatted
-    if moneyPerSec >= 1000000 then
-        moneyPerSecFormatted = string.format("%.1fM/s", moneyPerSec / 1000000)
-    elseif moneyPerSec >= 1000 then
-        moneyPerSecFormatted = string.format("%.1fK/s", moneyPerSec / 1000)
+    if bestAnimal.Value >= 1000000000 then
+        moneyPerSecFormatted = string.format("💰 %.1fB/s", bestAnimal.Value / 1000000000)
+    elseif bestAnimal.Value >= 1000000 then
+        moneyPerSecFormatted = string.format("💰 %.1fM/s", bestAnimal.Value / 1000000)
+    elseif bestAnimal.Value >= 1000 then
+        moneyPerSecFormatted = string.format("💰 %.1fK/s", bestAnimal.Value / 1000)
     else
-        moneyPerSecFormatted = string.format("%d/s", moneyPerSec)
+        moneyPerSecFormatted = string.format("💰 %d/s", bestAnimal.Value)
     end
-    
-    -- Format animal value
-    local valueFormatted
-    if animalData.Value >= 1000000000 then
-        valueFormatted = string.format("%.1fB", animalData.Value / 1000000000)
-    elseif animalData.Value >= 1000000 then
-        valueFormatted = string.format("%.1fM", animalData.Value / 1000000)
-    elseif animalData.Value >= 1000 then
-        valueFormatted = string.format("%.1fK", animalData.Value / 1000)
-    else
-        valueFormatted = tostring(animalData.Value)
-    end
-    
+
     -- Create embed
     local embed = {
         title = "🐾 **Brainrot Notify | KLPN Hub**",
-        color = 65280, -- Green
+        color = 65280,
         fields = {
             {
                 name = "**Name**",
-                value = animalData.DisplayName,
+                value = bestAnimal.DisplayName,
                 inline = false
             },
             {
@@ -1346,7 +1393,7 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
             },
             {
                 name = "**Players**",
-                value = string.format("%d/%d", playersCount, game.Players.MaxPlayers),
+                value = string.format("👤 %d/%d", playersCount, game.Players.MaxPlayers),
                 inline = true
             },
             {
@@ -1384,11 +1431,12 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
     }
     
     -- Send webhook
-    local success, response = pcall(function()
-        local jsonPayload = game:GetService("HttpService"):JSONEncode(payload)
+    local success = pcall(function()
+        local HttpService = game:GetService("HttpService")
+        local jsonPayload = HttpService:JSONEncode(payload)
         
         if syn and syn.request then
-            local result = syn.request({
+            syn.request({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {
@@ -1396,9 +1444,8 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
                 },
                 Body = jsonPayload
             })
-            return result
         elseif request then
-            local result = request({
+            request({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {
@@ -1406,102 +1453,12 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
                 },
                 Body = jsonPayload
             })
-            return result
-        else
-            -- Fallback to HttpPost if available
-            return game:HttpPost(WEBHOOK_URL, jsonPayload)
         end
     end)
-    
-    if success then
-        print("✅ Webhook sent for " .. animalData.DisplayName .. " (" .. valueFormatted .. ")")
-        -- Mark this animal in this server as notified (only once per server)
-        notifiedAnimals[animalKey] = true
-        
-        -- Show in-game notification
-        showNotification("Webhook Sent", 
-            animalData.DisplayName .. " (" .. valueFormatted .. ")\n" ..
-            "Players: " .. playersCount .. "/" .. game.Players.MaxPlayers .. "\n" ..
-            "✅ Notification sent once"
-        )
-        return true
-    else
-        warn("❌ Failed to send webhook: " .. tostring(response))
-        showNotification("Webhook Failed", "Failed to send notification", true)
-        return false
-    end
 end
 
--- Function to check for high-value animals and send notifications
-local function checkForHighValueAnimals()
-    local playersCount = #game.Players:GetPlayers()
-    local jobId = game.JobId
-    
-    -- Use the existing findAnimalOverheads function
-    local overheads = findAnimalOverheads()
-    
-    if #overheads == 0 then
-        return -- No animals found
-    end
-    
-    local foundHighValue = false
-    
-    for _, overhead in pairs(overheads) do
-        local animalData = getAnimalData(overhead)
-        if animalData and animalData.Value >= MIN_ANIMAL_VALUE then
-            print("📊 Found high value animal: " .. animalData.DisplayName .. " (" .. animalData.Value .. ")")
-            sendDiscordWebhook(animalData, jobId, playersCount)
-            foundHighValue = true
-            break -- Only send one notification per check
-        end
-    end
-    
-    if not foundHighValue then
-        -- Debug: Show what animals were found
-        for _, overhead in pairs(overheads) do
-            local animalData = getAnimalData(overhead)
-            if animalData then
-                print("📊 Animal found: " .. animalData.DisplayName .. " (" .. animalData.Value .. ") - Below threshold")
-            end
-        end
-    end
-end
-
--- Clear notified animals when joining a new server
-game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
-    if state == Enum.TeleportState.InProgress then
-        notifiedAnimals = {} -- Clear all previous notifications
-        print("🔄 Cleared webhook history for new server")
-    end
-end)
-
--- Webhook Notifier Loop (check every 10 seconds)
-RunService.Heartbeat:Connect(function()
-    local currentTime = tick()
-    if currentTime - lastWebhookCheck >= 10 then -- Check every 10 seconds
-        checkForHighValueAnimals()
-        lastWebhookCheck = currentTime
-    end
-end)
-
--- Also add a manual check to the existing animal scanning
-local originalFindBestAnimal = findBestAnimal
-findBestAnimal = function()
-    originalFindBestAnimal()
-    
-    -- Check for high value animals when scanning for best animal
-    local currentTime = tick()
-    if currentTime - lastWebhookCheck >= 10 then
-        checkForHighValueAnimals()
-        lastWebhookCheck = currentTime
-    end
-end
-
--- Test the webhook on script start
-task.delay(10, function()
-    showNotification("Webhook System", "✅ Webhook system activated!\nScanning for 10M+ animals...")
-    print("🔍 Webhook system started - looking for animals worth 10M+")
-end)
+-- Send webhook once
+sendRealAnimalWebhook()
 -- ========== INPUT HANDLERS ==========
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -1659,6 +1616,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
