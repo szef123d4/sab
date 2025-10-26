@@ -188,7 +188,7 @@ local function extractNumber(str)
     return (tonumber(numberStr) or 0) * multiplier
 end
 
--- ========== AUTO LAZER CAP ==========
+
 
 -- ========== AUTO LAZER CAP ==========
 
@@ -260,8 +260,27 @@ local function safeFire(targetPlayer)
     end
 end
 
+local function autoEquipLaserCape()
+    local backpack = player:WaitForChild("Backpack")
+    local character = player.Character
+    
+    -- Look specifically for "Laser Cape" in backpack
+    local laserCape = backpack:FindFirstChild("Laser Cape")
+    
+    -- Equip the Laser Cape if found
+    if laserCape and character then
+        laserCape.Parent = character
+        task.wait(0.1) -- Small delay to ensure tool is equipped
+    end
+    
+    return laserCape ~= nil
+end
+
 local function autoLazerWorker()
     while autoLazerEnabled do
+        -- Auto equip Laser Cape before firing
+        autoEquipLaserCape()
+        
         local target = findNearestAllowed()
         if target then
             safeFire(target)
@@ -278,6 +297,8 @@ local function toggleAutoLazer()
     autoLazerEnabled = not autoLazerEnabled
     
     if autoLazerEnabled then
+        -- Try to equip Laser Cape when enabling
+        autoEquipLaserCape()
         autoLazerThread = task.spawn(autoLazerWorker)
     else
         if autoLazerThread then
@@ -1419,4 +1440,5 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
