@@ -1062,20 +1062,27 @@ local function flyToBestAnimal()
     end)
 end
 
--- ========== FIXED ANTI-DEATH ==========
+-- ========== ANTI-DEATH & ANTI-KICK ==========
 
-local function applySimpleAntiDeath()
-    if not humanoid then return end
-    
-    humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-        if humanoid.Health <= 0 then
-            -- Simple character reset
-            local char = player.Character
-            if char then
-                char:BreakJoints()
-            end
+local function applyAntiDeath(state)
+    if humanoid then
+        for _, s in pairs({
+            Enum.HumanoidStateType.FallingDown,
+            Enum.HumanoidStateType.Ragdoll,
+            Enum.HumanoidStateType.PlatformStanding,
+            Enum.HumanoidStateType.Seated
+        }) do
+            humanoid:SetStateEnabled(s, not state)
         end
-    end)
+        if state then
+            humanoid.Health = humanoid.MaxHealth
+            humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                if humanoid.Health <= 0 then
+                    humanoid.Health = humanoid.MaxHealth
+                end
+            end)
+        end
+    end
 end
 
 -- ========== PLAYER ESP ==========
@@ -1511,8 +1518,8 @@ end)
 -- Setup anti-negative effects
 setupAntiNegativeEffects()
 
--- Apply simple anti-death with reset
-applySimpleAntiDeath()
+-- Apply anti-death
+applyAntiDeath(true)
 
 -- Enable ragdoll movement
 enableRagdollMovement(character)
@@ -1542,8 +1549,7 @@ player.CharacterAdded:Connect(function(newChar)
     humanoid = character:WaitForChild("Humanoid")
     root = character:WaitForChild("HumanoidRootPart")
     
-    -- Re-apply simple anti-death
-    applySimpleAntiDeath()
+    applyAntiDeath(true)
     enableRagdollMovement(character)
     
     if flyToggle then
