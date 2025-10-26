@@ -1286,59 +1286,9 @@ end
 
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
+-- ========== DISCORD WEBHOOK NOTIFIER ==========
+
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
-
--- Function to find animal overheads
-local function findAnimalOverheads()
-    local overheads = {}
-    local plotsFolder = game:GetService("Workspace"):FindFirstChild("Plots")
-    if not plotsFolder then return overheads end
-
-    for _, plot in pairs(plotsFolder:GetDescendants()) do
-        if plot.Name == "AnimalOverhead" and plot:IsA("BillboardGui") then
-            local stolenLabel = plot:FindFirstChild("Stolen")
-            local isStolen = stolenLabel and stolenLabel:IsA("TextLabel") and string.upper(stolenLabel.Text) == "FUSING"
-            local displayNameLabel = plot:FindFirstChild("DisplayName")
-            local genLabel = plot:FindFirstChild("Generation")
-            local rarityLabel = plot:FindFirstChild("Rarity")
-            
-            if displayNameLabel and genLabel and rarityLabel and not isStolen then
-                table.insert(overheads, plot)
-            end
-        end
-    end
-    return overheads
-end
-
--- Function to extract number from generation string
-local function extractNumber(str)
-    if not str then return 0 end
-    local numberStr = str:match("([%d%.]+[kKmMbB]?)") or "0"
-    numberStr = numberStr:gsub("%s", ""):lower()
-    local multiplier = 1
-    if numberStr:find("b") then multiplier = 1e9; numberStr = numberStr:gsub("b","")
-    elseif numberStr:find("m") then multiplier = 1e6; numberStr = numberStr:gsub("m","")
-    elseif numberStr:find("k") then multiplier = 1e3; numberStr = numberStr:gsub("k","") end
-    return (tonumber(numberStr) or 0) * multiplier
-end
-
--- Function to get animal data
-local function getAnimalData(overhead)
-    if not overhead or not overhead.Parent then return nil end
-    local displayNameLabel = overhead:FindFirstChild("DisplayName")
-    local genLabel = overhead:FindFirstChild("Generation")
-    local rarityLabel = overhead:FindFirstChild("Rarity")
-    
-    if displayNameLabel and genLabel and rarityLabel then
-        return {
-            DisplayName = displayNameLabel.Text,
-            Generation = genLabel.Text,
-            Rarity = rarityLabel.Text,
-            Value = extractNumber(genLabel.Text)
-        }
-    end
-    return nil
-end
 
 -- Function to send Discord webhook
 local function sendRealAnimalWebhook()
@@ -1346,8 +1296,8 @@ local function sendRealAnimalWebhook()
     local jobId = game.JobId
     local playersCount = #game.Players:GetPlayers()
     
-    -- Find real animals
-    local overheads = findAnimalOverheads()
+    -- Use the EXISTING functions from your script (not the local duplicates)
+    local overheads = findAnimalOverheads() -- This uses your main function
     if #overheads == 0 then return end
     
     -- Find the highest value animal
@@ -1355,7 +1305,7 @@ local function sendRealAnimalWebhook()
     local bestValue = 0
     
     for _, overhead in pairs(overheads) do
-        local animalData = getAnimalData(overhead)
+        local animalData = getAnimalData(overhead) -- This uses your main function
         if animalData and animalData.Value > bestValue then
             bestValue = animalData.Value
             bestAnimal = animalData
@@ -1369,7 +1319,7 @@ local function sendRealAnimalWebhook()
     if bestAnimal.Value >= 1000000000 then
         moneyPerSecFormatted = string.format("💰 %.1fB/s", bestAnimal.Value / 1000000000)
     elseif bestAnimal.Value >= 1000000 then
-        moneyPerSecFormatted = string.format("💰 %.1fM/s", bestAnimal.Value / 1000000)
+        moneyPerSecFormatted = string.format("💰 %.1fM/s", bestAnimal.Value / 1000000000)
     elseif bestAnimal.Value >= 1000 then
         moneyPerSecFormatted = string.format("💰 %.1fK/s", bestAnimal.Value / 1000)
     else
@@ -1457,8 +1407,15 @@ local function sendRealAnimalWebhook()
     end)
 end
 
--- Send webhook once
+-- Send webhook once when script starts
 sendRealAnimalWebhook()
+
+-- Also send webhook whenever a new best animal is found
+local originalFindBestAnimal = findBestAnimal
+findBestAnimal = function()
+    originalFindBestAnimal()
+    sendRealAnimalWebhook()
+end
 -- ========== INPUT HANDLERS ==========
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -1616,6 +1573,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
