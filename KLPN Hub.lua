@@ -1296,7 +1296,7 @@ local function sendRealAnimalWebhook()
     local jobId = game.JobId
     local playersCount = #game.Players:GetPlayers()
     
-    -- Use the EXISTING functions from your script
+    -- Use the EXISTING functions from above (remove the duplicate functions below)
     local overheads = findAnimalOverheads()
     if #overheads == 0 then return end
     
@@ -1314,12 +1314,12 @@ local function sendRealAnimalWebhook()
     
     if not bestAnimal then return end
     
-    -- FIXED: Format animal value as money per second
+    -- Format animal value as money per second
     local moneyPerSecFormatted
     if bestAnimal.Value >= 1000000000 then
         moneyPerSecFormatted = string.format("💰 %.1fB/s", bestAnimal.Value / 1000000000)
     elseif bestAnimal.Value >= 1000000 then
-        moneyPerSecFormatted = string.format("💰 %.1fM/s", bestAnimal.Value / 1000000) -- FIXED: was 1000000000
+        moneyPerSecFormatted = string.format("💰 %.1fM/s", bestAnimal.Value / 1000000)
     elseif bestAnimal.Value >= 1000 then
         moneyPerSecFormatted = string.format("💰 %.1fK/s", bestAnimal.Value / 1000)
     else
@@ -1381,12 +1381,12 @@ local function sendRealAnimalWebhook()
     }
     
     -- Send webhook
-    local success, result = pcall(function()
+    local success = pcall(function()
         local HttpService = game:GetService("HttpService")
         local jsonPayload = HttpService:JSONEncode(payload)
         
         if syn and syn.request then
-            local response = syn.request({
+            syn.request({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {
@@ -1394,9 +1394,8 @@ local function sendRealAnimalWebhook()
                 },
                 Body = jsonPayload
             })
-            return response
         elseif request then
-            local response = request({
+            request({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {
@@ -1404,29 +1403,12 @@ local function sendRealAnimalWebhook()
                 },
                 Body = jsonPayload
             })
-            return response
-        else
-            -- Try http_post as fallback
-            return http_post(WEBHOOK_URL, jsonPayload)
         end
     end)
-    
-    if success then
-        showNotification("Webhook Sent", "Animal notification sent to Discord")
-    else
-        warn("Webhook failed: " .. tostring(result))
-    end
 end
 
--- Send webhook once when script starts
-task.spawn(sendRealAnimalWebhook)
-
--- Also send webhook whenever a new best animal is found
-local originalFindBestAnimal = findBestAnimal
-findBestAnimal = function()
-    originalFindBestAnimal()
-    task.spawn(sendRealAnimalWebhook)
-end
+-- Send webhook once
+sendRealAnimalWebhook()
 -- ========== INPUT HANDLERS ==========
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -1584,6 +1566,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
