@@ -215,7 +215,9 @@ local function isValidTarget(player)
 end
 
 local function findNearestAllowed()
-    if not Players.LocalPlayer.Character or not Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    if not Players.LocalPlayer.Character or not Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then 
+        return nil 
+    end
     local myPos = Players.LocalPlayer.Character.HumanoidRootPart.Position
     local nearest = nil
     local nearestDist = math.huge
@@ -231,36 +233,135 @@ local function findNearestAllowed()
             end
         end
     end
-    return nearest
+    return nearest, nearestDist
 end
 
 local function safeFire(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then return end
-    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return end
-    local remote = getLazerRemote()
-    local args = {
-        [1] = targetHRP.Position,
-        [2] = targetHRP
-    }
-    if remote and remote.FireServer then
-        pcall(function()
-            remote:FireServer(unpack(args))
-        end)
+    if not targetPlayer or not targetPlayer.Character then 
+        return false, "No target character"
     end
+    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then 
+        return false, "No HumanoidRootPart found"
+    end
+    
+    local remote = getLazerRemote()
+    if not remote then
+        return false, "Lazer remote not found"
+    end
+    
+    -- Try different argument formats
+    local success = false
+    local errorMsg = ""
+    
+    -- Try format 1: Position only
+    local success1, err1 = pcall(function()
+        remote:FireServer(targetHRP.Position)
+    end)
+    
+    if success1 then
+        return true, "Fired successfully"
+    end
+    
+    -- Try format 2: Position and HRP
+    local success2, err2 = pcall(function()
+        remote:FireServer(targetHRP.Position, targetHRP)
+    end)
+    
+    if success2 then
+        return true, "Fired successfully"
+    end
+    
+    -- Try format 3: Table format
+    local success3, err3 = pcall(function()
+        remote:FireServer({targetHRP.Position, targetHRP})
+    end)
+    
+    if success3 then
+        return true, "Fired successfully"
+    end
+    
+    -- Try format 4: Just fire without arguments
+    local success4, err4 = pcall(function()
+        remote:FireServer()
+    end)
+    
+    if success4 then
+        return true, "Fired successfully"
+    end
+    
+    return false, "All fire attempts failed"
 end
 
 local function autoLazerWorker()
+    local consecutiveFails = 0
+    local lastTargetName = ""
+    
     while autoLazerEnabled do
-        local target = findNearestAllowed()
-        if target then
-            safeFire(target)
+        local remote = getLazerRemote()
+        if not remote then
+            if consecutiveFails == 0 then
+                showNotification("Auto Lazer", "❌ Lazer remote not found!", true)
+            end
+            consecutiveFails = consecutiveFails + 1
+            if consecutiveFails >= 3 then
+                showNotification("Auto Lazer", "❌ Remote not found\nAuto Lazer disabled", true)
+                autoLazerEnabled = false
+                break
+            end
+            task.wait(1)
+            continue
         end
+        
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            if consecutiveFails == 0 then
+                showNotification("Auto Lazer", "❌ No character found!", true)
+            end
+            consecutiveFails = consecutiveFails + 1
+            if consecutiveFails >= 3 then
+                showNotification("Auto Lazer", "❌ No character\nAuto Lazer disabled", true)
+                autoLazerEnabled = false
+                break
+            end
+            task.wait(1)
+            continue
+        end
+        
+        local target, distance = findNearestAllowed()
+        if target then
+            local success, result = safeFire(target)
+            if success then
+                consecutiveFails = 0
+                if target.Name ~= lastTargetName then
+                    showNotification("Auto Lazer", "✅ Targeting: " .. target.Name .. "\nDistance: " .. math.floor(distance) .. " studs")
+                    lastTargetName = target.Name
+                end
+            else
+                consecutiveFails = consecutiveFails + 1
+                if consecutiveFails >= 3 then
+                    showNotification("Auto Lazer", "❌ Firing failed", true)
+                end
+            end
+        else
+            consecutiveFails = consecutiveFails + 1
+            if consecutiveFails == 1 then
+                showNotification("Auto Lazer", "🔍 No valid targets found")
+            elseif consecutiveFails >= 10 then
+                showNotification("Auto Lazer", "❌ No targets\nAuto Lazer disabled", true)
+                autoLazerEnabled = false
+                break
+            end
+        end
+        
         local t0 = tick()
         while tick() - t0 < 0.6 do
             if not autoLazerEnabled then break end
             RunService.Heartbeat:Wait()
         end
+    end
+    
+    if autoLazerThread then
+        autoLazerThread = nil
     end
 end
 
@@ -268,7 +369,20 @@ local function toggleAutoLazer()
     autoLazerEnabled = not autoLazerEnabled
     
     if autoLazerEnabled then
-        showNotification("Auto Lazer", "✅ Auto Lazer enabled!\nTargeting nearest player every 0.6s")
+        local remote = getLazerRemote()
+        if not remote then
+            showNotification("Auto Lazer", "❌ Cannot find lazer remote!", true)
+            autoLazerEnabled = false
+            return
+        end
+        
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            showNotification("Auto Lazer", "❌ No character found!", true)
+            autoLazerEnabled = false
+            return
+        end
+        
+        showNotification("Auto Lazer", "✅ Auto Lazer enabled!\nTargeting every 0.6s")
         autoLazerThread = task.spawn(autoLazerWorker)
     else
         showNotification("Auto Lazer", "❌ Auto Lazer disabled")
@@ -302,7 +416,6 @@ local function resizeSentry(part)
         part.Size = Vector3.new(50, 50, 100)
         part.CanCollide = false
         
-        -- Also make sure it's visible but non-collidable
         part.Transparency = 0.5
         part.Material = Enum.Material.Neon
         part.Color = Color3.fromRGB(255, 0, 0)
@@ -310,17 +423,14 @@ local function resizeSentry(part)
 end
 
 local function setupSentryResizer()
-    -- Apply to existing Sentries
     for _, obj in ipairs(Workspace:GetChildren()) do
         resizeSentry(obj)
     end
 
-    -- Listen for new Sentries added
     Workspace.ChildAdded:Connect(function(child)
         resizeSentry(child)
     end)
     
-    -- Also check descendants in case sentries are inside models
     for _, obj in ipairs(Workspace:GetDescendants()) do
         resizeSentry(obj)
     end
@@ -376,36 +486,30 @@ end
 local function restoreNormalState()
     local controls, original = getControlsAndOriginal()
 
-    -- Restore movement
     if controls and original and controls.moveFunction ~= original then
         pcall(function() controls.moveFunction = original end)
     end
 
-    -- Restore FOV
     if Camera.FieldOfView ~= CONFIG.NORMAL_FOV then
         Camera.FieldOfView = CONFIG.NORMAL_FOV
     end
 
-    -- Remove Blur effects
     for _, effect in ipairs(Lighting:GetChildren()) do
         if effect:IsA("BlurEffect") then
             pcall(function() effect:Destroy() end)
         end
     end
 
-    -- Remove Boogie disco ColorCorrectionEffect
     local disco = Lighting:FindFirstChild("DiscoEffect")
     if disco and disco:IsA("ColorCorrectionEffect") then
         disco:Destroy()
     end
 
-    -- Remove Bee Attack ColorCorrection
     local cc = Lighting:FindFirstChild("ColorCorrection")
     if cc and cc:IsA("ColorCorrectionEffect") then
         cc:Destroy()
     end
 
-    -- Disable Paintball UI effects
     local controllers = ReplicatedStorage:FindFirstChild("Controllers")
     if controllers then
         local itemCtrl = controllers:FindFirstChild("ItemController")
@@ -423,10 +527,8 @@ local function restoreNormalState()
 end
 
 local function startAntiNegativeEffects()
-    -- Main cleaner loop
     RunService.Heartbeat:Connect(restoreNormalState)
     
-    -- Specific Bee Attack remover
     RunService.Heartbeat:Connect(function()
         local cc = Lighting:FindFirstChild("ColorCorrection")
         if cc and cc:IsA("ColorCorrectionEffect") then
@@ -434,7 +536,6 @@ local function startAntiNegativeEffects()
         end
     end)
     
-    -- Trigger cleanup when effects are applied
     if UseItemEvent then
         UseItemEvent.OnClientEvent:Connect(function(effect)
             if effect == "Bee Attack" or effect == "Boogie" or effect == "PaintballHitted" then
@@ -1399,9 +1500,8 @@ player.CharacterAdded:Connect(function(newChar)
     applyAntiDeath(true)
     enableRagdollMovement(character)
     
-    -- Recreate flying controls if needed
     if flyToggle then
-        task.wait(2) -- Wait for character to fully load
+        task.wait(2)
         toggleHookFly()
     end
 end)
@@ -1425,7 +1525,6 @@ end)
 player.CharacterRemoving:Connect(function()
     stopFlying()
     cleanupESP()
-    -- Stop auto lazer
     if autoLazerThread then
         task.cancel(autoLazerThread)
         autoLazerThread = nil
