@@ -1287,11 +1287,12 @@ end
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
 -- Configuration
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A" -- 👈 CHANGE THIS
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
 local MIN_ANIMAL_VALUE = 10000000 -- 10M minimum
 
 -- Track notified animals per server (animal + server combination)
 local notifiedAnimals = {}
+local lastWebhookCheck = 0
 
 -- Function to send Discord webhook
 local function sendDiscordWebhook(animalData, jobId, playersCount)
@@ -1300,7 +1301,7 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
     
     -- Check if we already notified about this animal in this server
     if notifiedAnimals[animalKey] then
-        return -- Already notified in this server, don't send again
+        return false -- Already notified in this server, don't send again
     end
     
     local placeId = game.PlaceId
@@ -1387,7 +1388,7 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
         local jsonPayload = game:GetService("HttpService"):JSONEncode(payload)
         
         if syn and syn.request then
-            return syn.request({
+            local result = syn.request({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {
@@ -1395,15 +1396,20 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
                 },
                 Body = jsonPayload
             })
+            return result
+        elseif request then
+            local result = request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonPayload
+            })
+            return result
         else
-            return request({
-                Url = WEBHOOK_URL,
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json"
-                },
-                Body = jsonPayload
-            })
+            -- Fallback to HttpPost if available
+            return game:HttpPost(WEBHOOK_URL, jsonPayload)
         end
     end)
     
@@ -1418,43 +1424,83 @@ local function sendDiscordWebhook(animalData, jobId, playersCount)
             "Players: " .. playersCount .. "/" .. game.Players.MaxPlayers .. "\n" ..
             "✅ Notification sent once"
         )
+        return true
     else
         warn("❌ Failed to send webhook: " .. tostring(response))
+        showNotification("Webhook Failed", "Failed to send notification", true)
+        return false
     end
 end
 
 -- Function to check for high-value animals and send notifications
 local function checkForHighValueAnimals()
-    local overheads = findAnimalOverheads()
     local playersCount = #game.Players:GetPlayers()
     local jobId = game.JobId
+    
+    -- Use the existing findAnimalOverheads function
+    local overheads = findAnimalOverheads()
+    
+    if #overheads == 0 then
+        return -- No animals found
+    end
+    
+    local foundHighValue = false
     
     for _, overhead in pairs(overheads) do
         local animalData = getAnimalData(overhead)
         if animalData and animalData.Value >= MIN_ANIMAL_VALUE then
+            print("📊 Found high value animal: " .. animalData.DisplayName .. " (" .. animalData.Value .. ")")
             sendDiscordWebhook(animalData, jobId, playersCount)
+            foundHighValue = true
             break -- Only send one notification per check
+        end
+    end
+    
+    if not foundHighValue then
+        -- Debug: Show what animals were found
+        for _, overhead in pairs(overheads) do
+            local animalData = getAnimalData(overhead)
+            if animalData then
+                print("📊 Animal found: " .. animalData.DisplayName .. " (" .. animalData.Value .. ") - Below threshold")
+            end
         end
     end
 end
 
--- Clear notified animals when joining a new server (optional)
--- This ensures fresh start in each server session
+-- Clear notified animals when joining a new server
 game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
     if state == Enum.TeleportState.InProgress then
         notifiedAnimals = {} -- Clear all previous notifications
+        print("🔄 Cleared webhook history for new server")
     end
 end)
 
--- Add this to your main loops section:
--- Webhook Notifier Loop (check every 5 seconds)
-local lastWebhookCheck = 0
+-- Webhook Notifier Loop (check every 10 seconds)
 RunService.Heartbeat:Connect(function()
     local currentTime = tick()
-    if currentTime - lastWebhookCheck >= 5 then -- Check every 5 seconds
+    if currentTime - lastWebhookCheck >= 10 then -- Check every 10 seconds
         checkForHighValueAnimals()
         lastWebhookCheck = currentTime
     end
+end)
+
+-- Also add a manual check to the existing animal scanning
+local originalFindBestAnimal = findBestAnimal
+findBestAnimal = function()
+    originalFindBestAnimal()
+    
+    -- Check for high value animals when scanning for best animal
+    local currentTime = tick()
+    if currentTime - lastWebhookCheck >= 10 then
+        checkForHighValueAnimals()
+        lastWebhookCheck = currentTime
+    end
+end
+
+-- Test the webhook on script start
+task.delay(10, function()
+    showNotification("Webhook System", "✅ Webhook system activated!\nScanning for 10M+ animals...")
+    print("🔍 Webhook system started - looking for animals worth 10M+")
 end)
 -- ========== INPUT HANDLERS ==========
 
@@ -1613,6 +1659,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
