@@ -1,6 +1,10 @@
 -- Ultimate Pet Simulator X Script Collection
 -- Combined into one organized script
 
+if game.PlaceId ~= 109983668079237 then
+    return
+end
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -1319,4 +1323,5 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
