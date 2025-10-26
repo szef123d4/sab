@@ -1283,6 +1283,179 @@ local function setupTransparentDecorations()
     end
 end
 
+
+-- ========== DISCORD WEBHOOK NOTIFIER ==========
+
+-- Configuration
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A" -- 👈 CHANGE THIS
+local MIN_ANIMAL_VALUE = 10000000 -- 10M minimum
+
+-- Track notified animals per server (animal + server combination)
+local notifiedAnimals = {}
+
+-- Function to send Discord webhook
+local function sendDiscordWebhook(animalData, jobId, playersCount)
+    -- Create unique key for this animal IN THIS SERVER
+    local animalKey = animalData.DisplayName .. "_" .. tostring(math.floor(animalData.Value)) .. "_" .. jobId
+    
+    -- Check if we already notified about this animal in this server
+    if notifiedAnimals[animalKey] then
+        return -- Already notified in this server, don't send again
+    end
+    
+    local placeId = game.PlaceId
+    
+    -- Get money per second (estimate based on animal value)
+    local moneyPerSec = math.floor(animalData.Value / 20000) -- Rough estimate
+    local moneyPerSecFormatted
+    if moneyPerSec >= 1000000 then
+        moneyPerSecFormatted = string.format("%.1fM/s", moneyPerSec / 1000000)
+    elseif moneyPerSec >= 1000 then
+        moneyPerSecFormatted = string.format("%.1fK/s", moneyPerSec / 1000)
+    else
+        moneyPerSecFormatted = string.format("%d/s", moneyPerSec)
+    end
+    
+    -- Format animal value
+    local valueFormatted
+    if animalData.Value >= 1000000000 then
+        valueFormatted = string.format("%.1fB", animalData.Value / 1000000000)
+    elseif animalData.Value >= 1000000 then
+        valueFormatted = string.format("%.1fM", animalData.Value / 1000000)
+    elseif animalData.Value >= 1000 then
+        valueFormatted = string.format("%.1fK", animalData.Value / 1000)
+    else
+        valueFormatted = tostring(animalData.Value)
+    end
+    
+    -- Create embed
+    local embed = {
+        title = "🐾 **Brainrot Notify | KLPN Hub**",
+        color = 65280, -- Green
+        fields = {
+            {
+                name = "**Name**",
+                value = animalData.DisplayName,
+                inline = false
+            },
+            {
+                name = "**Money per sec**",
+                value = moneyPerSecFormatted,
+                inline = true
+            },
+            {
+                name = "**Players**",
+                value = string.format("%d/%d", playersCount, game.Players.MaxPlayers),
+                inline = true
+            },
+            {
+                name = "**Job ID (Mobile)**",
+                value = "```" .. jobId .. "```",
+                inline = false
+            },
+            {
+                name = "**Job ID (PC)**",
+                value = "```" .. jobId .. "```",
+                inline = false
+            },
+            {
+                name = "**Join Link**",
+                value = "[Click to Join](https://www.roblox.com/games/" .. placeId .. "?jobId=" .. jobId .. ")",
+                inline = false
+            },
+            {
+                name = "**Join Script (PC)**",
+                value = "```lua\ngame:GetService(\"TeleportService\"):TeleportToPlaceInstance(" .. placeId .. ",\"" .. jobId .. "\",game.Players.LocalPlayer)\n```",
+                inline = false
+            }
+        },
+        timestamp = DateTime.now():ToIsoDate(),
+        footer = {
+            text = "Made by KLPN Hub • " .. os.date("%m/%d/%Y %I:%M %p")
+        }
+    }
+    
+    -- Prepare payload
+    local payload = {
+        embeds = {embed},
+        username = "KLPN Hub Notifier",
+        avatar_url = "https://cdn.discordapp.com/attachments/1128833213672656988/1215321493282160730/standard_1.gif"
+    }
+    
+    -- Send webhook
+    local success, response = pcall(function()
+        local jsonPayload = game:GetService("HttpService"):JSONEncode(payload)
+        
+        if syn and syn.request then
+            return syn.request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonPayload
+            })
+        else
+            return request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonPayload
+            })
+        end
+    end)
+    
+    if success then
+        print("✅ Webhook sent for " .. animalData.DisplayName .. " (" .. valueFormatted .. ")")
+        -- Mark this animal in this server as notified (only once per server)
+        notifiedAnimals[animalKey] = true
+        
+        -- Show in-game notification
+        showNotification("Webhook Sent", 
+            animalData.DisplayName .. " (" .. valueFormatted .. ")\n" ..
+            "Players: " .. playersCount .. "/" .. game.Players.MaxPlayers .. "\n" ..
+            "✅ Notification sent once"
+        )
+    else
+        warn("❌ Failed to send webhook: " .. tostring(response))
+    end
+end
+
+-- Function to check for high-value animals and send notifications
+local function checkForHighValueAnimals()
+    local overheads = findAnimalOverheads()
+    local playersCount = #game.Players:GetPlayers()
+    local jobId = game.JobId
+    
+    for _, overhead in pairs(overheads) do
+        local animalData = getAnimalData(overhead)
+        if animalData and animalData.Value >= MIN_ANIMAL_VALUE then
+            sendDiscordWebhook(animalData, jobId, playersCount)
+            break -- Only send one notification per check
+        end
+    end
+end
+
+-- Clear notified animals when joining a new server (optional)
+-- This ensures fresh start in each server session
+game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.InProgress then
+        notifiedAnimals = {} -- Clear all previous notifications
+    end
+end)
+
+-- Add this to your main loops section:
+-- Webhook Notifier Loop (check every 5 seconds)
+local lastWebhookCheck = 0
+RunService.Heartbeat:Connect(function()
+    local currentTime = tick()
+    if currentTime - lastWebhookCheck >= 5 then -- Check every 5 seconds
+        checkForHighValueAnimals()
+        lastWebhookCheck = currentTime
+    end
+end)
 -- ========== INPUT HANDLERS ==========
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -1440,6 +1613,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
