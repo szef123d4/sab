@@ -1104,7 +1104,7 @@ local function enableMobileDesync()
         if setfflag then setfflag("WorldStepMax", "-9999999999") end
         task.wait(0.2)
         useItemRemote:FireServer()
-        task.wait(2)
+        task.wait(1)
         teleportRemote:FireServer()
         task.wait(2)
         if setfflag then setfflag("WorldStepMax", "-1") end
@@ -1319,3 +1319,4 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
