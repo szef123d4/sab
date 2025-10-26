@@ -50,7 +50,10 @@ local CONFIG = {
     NORMAL_FOV = 70,
     
     -- Server Hopper
-    SERVER_HOP_KEY = Enum.KeyCode.P
+    SERVER_HOP_KEY = Enum.KeyCode.P,
+    
+    -- Auto Lazer
+    AUTO_LAZER_KEY = Enum.KeyCode.L
 }
 
 -- ========== GLOBAL VARIABLES ==========
@@ -81,6 +84,15 @@ local espObjects = {}
 
 -- Anti-Negative Effects
 local UseItemEvent
+
+-- Auto Lazer
+local autoLazerEnabled = false
+local autoLazerThread = nil
+local blacklistNames = {"szymonyut"}
+local blacklist = {}
+for _, name in ipairs(blacklistNames) do
+    blacklist[string.lower(name)] = true
+end
 
 -- ========== UTILITY FUNCTIONS ==========
 
@@ -174,6 +186,97 @@ local function extractNumber(str)
     elseif numberStr:find("m") then multiplier = 1e6; numberStr = numberStr:gsub("m","")
     elseif numberStr:find("k") then multiplier = 1e3; numberStr = numberStr:gsub("k","") end
     return (tonumber(numberStr) or 0) * multiplier
+end
+
+-- ========== AUTO LAZER CAP ==========
+
+local function getLazerRemote()
+    local remote = nil
+    pcall(function()
+        if ReplicatedStorage:FindFirstChild("Packages") and ReplicatedStorage.Packages:FindFirstChild("Net") then
+            remote = ReplicatedStorage.Packages.Net:FindFirstChild("RE/UseItem") or ReplicatedStorage.Packages.Net:FindFirstChild("RE"):FindFirstChild("UseItem")
+        end
+        if not remote then
+            remote = ReplicatedStorage:FindFirstChild("RE/UseItem") or ReplicatedStorage:FindFirstChild("UseItem")
+        end
+    end)
+    return remote
+end
+
+local function isValidTarget(player)
+    if not player or not player.Character or player == Players.LocalPlayer then return false end
+    local name = player.Name and string.lower(player.Name) or ""
+    if blacklist[name] then return false end
+    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    if not hrp or not humanoid then return false end
+    if humanoid.Health <= 0 then return false end
+    return true
+end
+
+local function findNearestAllowed()
+    if not Players.LocalPlayer.Character or not Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    local myPos = Players.LocalPlayer.Character.HumanoidRootPart.Position
+    local nearest = nil
+    local nearestDist = math.huge
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if isValidTarget(pl) then
+            local targetHRP = pl.Character:FindFirstChild("HumanoidRootPart")
+            if targetHRP then
+                local d = (Vector3.new(targetHRP.Position.X, 0, targetHRP.Position.Z) - Vector3.new(myPos.X, 0, myPos.Z)).Magnitude
+                if d < nearestDist then
+                    nearestDist = d
+                    nearest = pl
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function safeFire(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return end
+    local remote = getLazerRemote()
+    local args = {
+        [1] = targetHRP.Position,
+        [2] = targetHRP
+    }
+    if remote and remote.FireServer then
+        pcall(function()
+            remote:FireServer(unpack(args))
+        end)
+    end
+end
+
+local function autoLazerWorker()
+    while autoLazerEnabled do
+        local target = findNearestAllowed()
+        if target then
+            safeFire(target)
+        end
+        local t0 = tick()
+        while tick() - t0 < 0.6 do
+            if not autoLazerEnabled then break end
+            RunService.Heartbeat:Wait()
+        end
+    end
+end
+
+local function toggleAutoLazer()
+    autoLazerEnabled = not autoLazerEnabled
+    
+    if autoLazerEnabled then
+        showNotification("Auto Lazer", "✅ Auto Lazer enabled!\nTargeting nearest player every 0.6s")
+        autoLazerThread = task.spawn(autoLazerWorker)
+    else
+        showNotification("Auto Lazer", "❌ Auto Lazer disabled")
+        if autoLazerThread then
+            task.cancel(autoLazerThread)
+            autoLazerThread = nil
+        end
+    end
 end
 
 -- ========== SERVER HOPPER ==========
@@ -1184,6 +1287,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
     -- Server Hopper
     elseif input.KeyCode == CONFIG.SERVER_HOP_KEY then
         loadServerHopper()
+    -- Auto Lazer
+    elseif input.KeyCode == CONFIG.AUTO_LAZER_KEY then
+        toggleAutoLazer()
     -- Anti-Death Jump
     elseif input.KeyCode == Enum.KeyCode.Space and character then
         local humanoid = character:FindFirstChild("Humanoid")
@@ -1319,9 +1425,13 @@ end)
 player.CharacterRemoving:Connect(function()
     stopFlying()
     cleanupESP()
+    -- Stop auto lazer
+    if autoLazerThread then
+        task.cancel(autoLazerThread)
+        autoLazerThread = nil
+    end
+    autoLazerEnabled = false
 end)
 
 -- Final initialization message
-showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
-
-
+showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
