@@ -1064,13 +1064,29 @@ end
 
 -- ========== ANTI-DEATH & ANTI-KICK ==========
 
--- KILL CHARACTER ONCE TO FIX BUGS (PUT THIS BEFORE ANTI-DEATH)
-if character and character:FindFirstChild("Humanoid") then
-    character:BreakJoints()
-    showNotification("Bug Fix", "Character reset to fix anti-death bugs", false)
-    task.wait(2) -- Wait for respawn
+-- Safe respawn function
+local function safeCharacterReset()
+    if character and character:FindFirstChild("Humanoid") then
+        local humanoid = character:FindFirstChild("Humanoid")
+        
+        showNotification("Auto Respawn", "Respawning character for bug prevention...", false)
+        
+        -- Use Roblox's proper respawn method
+        humanoid.Health = 0
+        
+        -- Wait for respawn to complete
+        task.wait(3)
+        showNotification("Auto Respawn", "Character respawned successfully!", false)
+    else
+        -- If no character, use respawn function
+        player:LoadCharacter()
+        task.wait(3)
+        showNotification("Auto Respawn", "Character loaded successfully!", false)
+    end
 end
 
+-- Auto respawn when script executes
+safeCharacterReset()
 
 local function applyAntiDeath(state)
     if humanoid then
@@ -1595,6 +1611,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
