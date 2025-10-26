@@ -1064,10 +1064,11 @@ end
 
 -- ========== ANTI-DEATH & ANTI-KICK ==========
 
--- Quick fix: Kill character once to reset all states
+-- KILL CHARACTER ONCE TO FIX BUGS (PUT THIS BEFORE ANTI-DEATH)
 if character and character:FindFirstChild("Humanoid") then
     character:BreakJoints()
-    showNotification("Bug Fix", "Character killed to reset all states", false)
+    showNotification("Bug Fix", "Character reset to fix anti-death bugs", false)
+    task.wait(2) -- Wait for respawn
 end
 
 
@@ -1594,5 +1595,6 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
