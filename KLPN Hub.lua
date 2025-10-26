@@ -8,7 +8,6 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
-local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -177,47 +176,15 @@ end
 
 local function loadServerHopper()
     local success, result = pcall(function()
-        local url = "https://raw.githubusercontent.com/szef123d4/sab/refs/heads/main/serverhoopper"
-        local scriptContent = game:HttpGet(url)
-        loadstring(scriptContent)()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/szef123d4/sab/refs/heads/main/serverhoopper"))()
     end)
     
     if success then
         showNotification("Server Hopper", "✅ Server hopper loaded successfully!\nPress P to hop servers.")
+        return true
     else
         showNotification("Server Hopper", "❌ Failed to load server hopper:\n" .. tostring(result), true)
-    end
-end
-
-local function executeServerHop()
-    -- Try to trigger the server hop functionality
-    local success, result = pcall(function()
-        -- This will attempt to use the loaded server hopper functionality
-        if _G.ServerHop or _G.HopServer then
-            if _G.ServerHop then
-                _G.ServerHop()
-            elseif _G.HopServer then
-                _G.HopServer()
-            end
-        else
-            -- Fallback server hop method
-            local TeleportService = game:GetService("TeleportService")
-            local placeId = game.PlaceId
-            local servers = game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"))
-            
-            for _, server in ipairs(servers.data) do
-                if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                    TeleportService:TeleportToPlaceInstance(placeId, server.id)
-                    break
-                end
-            end
-        end
-    end)
-    
-    if success then
-        showNotification("Server Hopper", "🔄 Attempting to hop servers...")
-    else
-        showNotification("Server Hopper", "❌ Server hop failed:\n" .. tostring(result), true)
+        return false
     end
 end
 
@@ -1212,7 +1179,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
         end)
     -- Server Hopper
     elseif input.KeyCode == CONFIG.SERVER_HOP_KEY then
-        executeServerHop()
+        loadServerHopper()
     -- Anti-Death Jump
     elseif input.KeyCode == Enum.KeyCode.Space and character then
         local humanoid = character:FindFirstChild("Humanoid")
@@ -1285,9 +1252,6 @@ end)
 
 -- ========== INITIALIZATION ==========
 
--- Load server hopper on startup
-task.spawn(loadServerHopper)
-
 -- Setup anti-negative effects
 setupAntiNegativeEffects()
 
@@ -1354,4 +1318,4 @@ player.CharacterRemoving:Connect(function()
 end)
 
 -- Final initialization message
-showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Server Hop\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
