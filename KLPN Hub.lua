@@ -40,7 +40,7 @@ local CONFIG = {
     FLY_SPEED = 70,
     FLY_REMOTE_DELAY = 0.1,
     HOOK_TOOL_NAME = "Grapple Hook",
-    FLY_KEY = Enum.KeyCode.V,
+    FLY_KEY = Enum.KeyCode.F,
     FLY_TO_ANIMAL_KEY = Enum.KeyCode.Z,
     
     -- Desync
@@ -1803,6 +1803,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
