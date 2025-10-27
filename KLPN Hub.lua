@@ -53,7 +53,10 @@ local CONFIG = {
     SERVER_HOP_KEY = Enum.KeyCode.P,
     
     -- Auto Lazer
-    AUTO_LAZER_KEY = Enum.KeyCode.L
+    AUTO_LAZER_KEY = Enum.KeyCode.L,
+    
+    -- Web Slinger Kill
+    WEB_SLINGER_KEY = Enum.KeyCode.K
 }
 
 -- ========== GLOBAL VARIABLES ==========
@@ -188,70 +191,9 @@ local function extractNumber(str)
     return (tonumber(numberStr) or 0) * multiplier
 end
 
+-- ========== WEB SLINGER KILL FUNCTION ==========
 
-
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local player = Players.LocalPlayer
 local WEB_SLINGER_TOOL_NAME = "Web Slinger"
-local USE_KEY = Enum.KeyCode.K
-
--- ========== NOTIFICATION SYSTEM ==========
-local function showNotification(title, text, isError)
-    local playerGui = player:WaitForChild("PlayerGui")
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "KillComboNotif"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = playerGui
-
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 280, 0, 70)
-    frame.Position = UDim2.new(0.5, -140, 0, 10)
-    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-    frame.BackgroundTransparency = 0.9
-    frame.BorderSizePixel = 0
-    frame.Parent = screenGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = frame
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 1
-    stroke.Color = isError and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
-    stroke.Parent = frame
-
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, 0, 0, 20)
-    titleLabel.Position = UDim2.new(0, 0, 0, 5)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = title
-    titleLabel.TextColor3 = isError and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
-    titleLabel.TextSize = 14
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.Parent = frame
-
-    local infoLabel = Instance.new("TextLabel")
-    infoLabel.Size = UDim2.new(1, 0, 0, 45)
-    infoLabel.Position = UDim2.new(0, 0, 0, 20)
-    infoLabel.BackgroundTransparency = 1
-    infoLabel.Text = text
-    infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    infoLabel.TextSize = 12
-    infoLabel.Font = Enum.Font.Gotham
-    infoLabel.TextYAlignment = Enum.TextYAlignment.Top
-    infoLabel.Parent = frame
-
-    -- Auto remove after 3 seconds
-    task.spawn(function()
-        task.wait(3)
-        screenGui:Destroy()
-    end)
-end
-
--- ========== WEB SLINGER FUNCTIONS ==========
 
 -- Function to find closest player
 local function findClosestPlayer()
@@ -370,26 +312,10 @@ local function onKeyPress()
     end
 end
 
--- Key input handler
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    
-    if input.KeyCode == USE_KEY then
-        onKeyPress()
-    end
-end)
-
-
-
 -- ========== AUTO LAZER CAP ==========
 
 local autoLazerEnabled = false
 local autoLazerThread = nil
-local blacklistNames = {"szymonyut"}
-local blacklist = {}
-for _, name in ipairs(blacklistNames) do
-    blacklist[string.lower(name)] = true
-end
 
 local function getLazerRemote()
     local remote = nil
@@ -1261,7 +1187,7 @@ local infiniteJumpEnabled = true
 local jumpRequestConnection
 
 local function doJump()
-    local character = player.Character  -- FIXED: Changed LocalPlayer to player
+    local character = player.Character
     if not character then return end
     
     local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -1296,23 +1222,24 @@ local function initializeJumpForCharacter(character)
     end)
 end
 
--- FIXED: Changed LocalPlayer to player
 player.CharacterAdded:Connect(function(character)
     initializeJumpForCharacter(character)
 end)
 
-if player.Character then  -- FIXED: Changed LocalPlayer to player
+if player.Character then
     initializeJumpForCharacter(player.Character)
 end
 
 -- ========== PLAYER ESP ==========
 
-local function getPlayerColor(player)
-    local hue = (player.UserId % 360) / 360
+local function getPlayerColor(targetPlayer)
+    local hue = (targetPlayer.UserId % 360) / 360
     return Color3.fromHSV(hue, 1, 1)
 end
 
 local function getCharacterBoundingBox(character)
+    if not character or not character.PrimaryPart then return nil, nil end
+    
     local minVec, maxVec
     for _, part in pairs(character:GetDescendants()) do
         if part:IsA("BasePart") and part.Anchored == false then
@@ -1334,126 +1261,165 @@ local function getCharacterBoundingBox(character)
             end
         end
     end
+    
     if minVec and maxVec then
         local size = maxVec - minVec
         local center = (minVec + maxVec)/2
         return center, size
     else
-        return nil, nil
+        return character.PrimaryPart.Position, Vector3.new(4, 6, 4)
     end
 end
 
-local function createPlayerBoundingBox(player)
-    if player == Players.LocalPlayer then return end
-
-    -- Remove existing ESP if it exists
-    if espObjects[player] then
-        espObjects[player]:Destroy()
-        espObjects[player] = nil
+local function createPlayerBoundingBox(targetPlayer)
+    if targetPlayer == player then return end
+    
+    -- Clean up existing ESP
+    if espObjects[targetPlayer] then
+        if espObjects[targetPlayer].Box then
+            espObjects[targetPlayer].Box:Destroy()
+        end
+        if espObjects[targetPlayer].Connection then
+            espObjects[targetPlayer].Connection:Disconnect()
+        end
+        espObjects[targetPlayer] = nil
     end
 
-    local char = player.Character
+    local char = targetPlayer.Character
     if not char then return end
 
-    local color = getPlayerColor(player)
+    local color = getPlayerColor(targetPlayer)
 
     local box = Instance.new("Part")
-    box.Name = "BoundingBox_" .. player.Name
+    box.Name = "BoundingBox_" .. targetPlayer.Name
     box.Anchored = true
     box.CanCollide = false
-    box.Transparency = 0.4
-    box.Material = Enum.Material.Plastic
+    box.Transparency = 0.6
+    box.Material = Enum.Material.Neon
     box.Color = color
     box.Parent = workspace
 
     local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(0,120,0,30)
+    billboard.Size = UDim2.new(0, 150, 0, 40)
     billboard.Adornee = box
     billboard.AlwaysOnTop = true
     billboard.Parent = box
 
     local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.fromScale(1,1)
+    nameLabel.Size = UDim2.fromScale(1, 1)
     nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = player.DisplayName
+    nameLabel.Text = targetPlayer.DisplayName
     nameLabel.TextColor3 = color
     nameLabel.TextScaled = true
     nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
     nameLabel.Parent = billboard
 
-    espObjects[player] = box
+    -- Store the ESP data
+    local espData = {
+        Box = box,
+        Connection = nil,
+        Player = targetPlayer
+    }
+    
+    espObjects[targetPlayer] = espData
 
-    -- Create connection to update position
-    local conn
-    conn = RunService.RenderStepped:Connect(function()
+    -- Update function
+    local function updateESP()
         if not char or not char.PrimaryPart or not char:FindFirstChild("Humanoid") then
-            -- Character is dead or gone, wait for respawn
-            box:Destroy()
-            conn:Disconnect()
-            espObjects[player] = nil
-            
-            -- Wait for character to respawn and recreate ESP
-            local characterAdded
-            characterAdded = player.CharacterAdded:Connect(function(newChar)
-                characterAdded:Disconnect()
-                task.wait(2) -- Wait for character to fully load
-                createPlayerBoundingBox(player)
-            end)
-            return
+            -- Character is invalid, cleanup
+            if espObjects[targetPlayer] then
+                espObjects[targetPlayer].Box:Destroy()
+                if espObjects[targetPlayer].Connection then
+                    espObjects[targetPlayer].Connection:Disconnect()
+                end
+                espObjects[targetPlayer] = nil
+            end
+            return false
         end
 
         local humanoid = char:FindFirstChild("Humanoid")
         if humanoid and humanoid.Health <= 0 then
-            -- Character is dead, remove ESP
-            box:Destroy()
-            conn:Disconnect()
-            espObjects[player] = nil
+            -- Character is dead, hide ESP
+            box.Transparency = 1
+            billboard.Enabled = false
+            return true
+        else
+            -- Character is alive, show ESP
+            box.Transparency = 0.6
+            billboard.Enabled = true
             
-            -- Wait for respawn and recreate ESP
-            local characterAdded
-            characterAdded = player.CharacterAdded:Connect(function(newChar)
-                characterAdded:Disconnect()
-                task.wait(2) -- Wait for character to fully load
-                createPlayerBoundingBox(player)
-            end)
-            return
+            local center, size = getCharacterBoundingBox(char)
+            if center then
+                box.Size = size + Vector3.new(1, 1, 1)
+                box.CFrame = CFrame.new(center)
+                billboard.StudsOffset = Vector3.new(0, box.Size.Y/2 + 2, 0)
+            end
+            return true
         end
+    end
 
-        local center, size = getCharacterBoundingBox(char)
-        if center and size then
-            box.Size = size + Vector3.new(0.5,0.5,0.5)
-            box.CFrame = CFrame.new(center)
-            billboard.StudsOffset = Vector3.new(0, box.Size.Y/2 + 0.5, 0)
+    -- Create heartbeat connection
+    espData.Connection = RunService.Heartbeat:Connect(function()
+        if not updateESP() then
+            -- ESP is no longer valid, stop updating
+            espData.Connection:Disconnect()
         end
+    end)
+
+    -- Listen for character respawns
+    local characterAddedConnection
+    characterAddedConnection = targetPlayer.CharacterAdded:Connect(function(newChar)
+        characterAddedConnection:Disconnect()
+        
+        -- Wait a bit for character to load
+        task.wait(2)
+        
+        -- Clean up old ESP and create new one
+        if espObjects[targetPlayer] then
+            espObjects[targetPlayer].Box:Destroy()
+            espObjects[targetPlayer].Connection:Disconnect()
+            espObjects[targetPlayer] = nil
+        end
+        
+        createPlayerBoundingBox(targetPlayer)
     end)
 end
 
--- Handle player joins for ESP
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function(char)
-        task.wait(2) -- Wait for character to fully load
-        createPlayerBoundingBox(player)
+-- Handle player joins
+Players.PlayerAdded:Connect(function(newPlayer)
+    newPlayer.CharacterAdded:Connect(function(char)
+        task.wait(1)
+        createPlayerBoundingBox(newPlayer)
     end)
-end)
-
--- Handle player leaves
-Players.PlayerRemoving:Connect(function(player)
-    if espObjects[player] then
-        espObjects[player]:Destroy()
-        espObjects[player] = nil
+    
+    if newPlayer.Character then
+        task.wait(1)
+        createPlayerBoundingBox(newPlayer)
     end
 end)
 
--- Setup player ESP for existing players
-for _, player in pairs(Players:GetPlayers()) do
-    if player ~= Players.LocalPlayer then
-        if player.Character then
-            createPlayerBoundingBox(player)
+-- Handle player leaves
+Players.PlayerRemoving:Connect(function(leftPlayer)
+    if espObjects[leftPlayer] then
+        espObjects[leftPlayer].Box:Destroy()
+        if espObjects[leftPlayer].Connection then
+            espObjects[leftPlayer].Connection:Disconnect()
+        end
+        espObjects[leftPlayer] = nil
+    end
+end)
+
+-- Initialize ESP for existing players
+for _, existingPlayer in pairs(Players:GetPlayers()) do
+    if existingPlayer ~= player then
+        if existingPlayer.Character then
+            createPlayerBoundingBox(existingPlayer)
         else
-            -- Wait for character to load
-            player.CharacterAdded:Connect(function(char)
-                task.wait(2)
-                createPlayerBoundingBox(player)
+            existingPlayer.CharacterAdded:Connect(function(char)
+                task.wait(1)
+                createPlayerBoundingBox(existingPlayer)
             end)
         end
     end
@@ -1523,11 +1489,7 @@ end
 
 -- ========== TRANSPARENT DECORATIONS ==========
 
--- ========== CAMERA NOCLIP (INVISICAM) ==========
-
 local function setupCameraNoclip()
-    -- Set camera occlusion mode to Invisicam (camera goes through objects)
-    local Players = game:GetService("Players")
     Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
 end
 
@@ -1554,10 +1516,8 @@ end
 local function setupTransparentDecorations()
     local plotsFolder = Workspace:WaitForChild("Plots")
     
-    -- Setup camera noclip using Invisicam
     setupCameraNoclip()
     
-    -- Then setup transparent decorations
     for _, model in ipairs(plotsFolder:GetChildren()) do
         makeDecorationsTransparent(model)
     end
@@ -1579,13 +1539,11 @@ end
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
 
--- Function to send Discord webhook
 local function sendRealAnimalWebhook()
     local placeId = game.PlaceId
     local jobId = game.JobId
     local playersCount = #game.Players:GetPlayers()
     
-    -- Create a version without cooldown for webhook
     local function findAnimalsForWebhook()
         local overheads = {}
         local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -1606,11 +1564,9 @@ local function sendRealAnimalWebhook()
         return overheads
     end
     
-    -- Use the webhook-specific function (no cooldown)
     local overheads = findAnimalsForWebhook()
     if #overheads == 0 then return end
     
-    -- Find the highest value animal
     local bestAnimal = nil
     local bestValue = 0
     
@@ -1624,7 +1580,6 @@ local function sendRealAnimalWebhook()
     
     if not bestAnimal then return end
     
-    -- Format animal value as money per second
     local moneyPerSecFormatted
     if bestAnimal.Value >= 1000000000 then
         moneyPerSecFormatted = string.format("💰 %.1fB/s", bestAnimal.Value / 1000000000)
@@ -1636,7 +1591,6 @@ local function sendRealAnimalWebhook()
         moneyPerSecFormatted = string.format("💰 %d/s", bestAnimal.Value)
     end
 
-    -- Create embed
     local embed = {
         title = "🐾 **Brainrot Notify | KLPN Hub**",
         color = 65280,
@@ -1683,14 +1637,12 @@ local function sendRealAnimalWebhook()
         }
     }
     
-    -- Prepare payload
     local payload = {
         embeds = {embed},
         username = "KLPN Hub Notifier",
         avatar_url = "https://cdn.discordapp.com/attachments/1128833213672656988/1215321493282160730/standard_1.gif"
     }
     
-    -- Send webhook
     local success = pcall(function()
         local HttpService = game:GetService("HttpService")
         local jsonPayload = HttpService:JSONEncode(payload)
@@ -1717,7 +1669,6 @@ local function sendRealAnimalWebhook()
     end)
 end
 
--- Send webhook once with a small delay to ensure animals are loaded
 task.wait(2)
 sendRealAnimalWebhook()
 
@@ -1744,6 +1695,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
     -- Auto Lazer
     elseif input.KeyCode == CONFIG.AUTO_LAZER_KEY then
         toggleAutoLazer()
+    -- Web Slinger Kill
+    elseif input.KeyCode == CONFIG.WEB_SLINGER_KEY then
+        onKeyPress()
     -- Flying controls
     elseif input.KeyCode == Enum.KeyCode.Space and LocalFlying then
         spaceKey = true
@@ -1752,27 +1706,17 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- This part is CORRECT for what you want:
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-
-    -- Flying TOGGLE (press once)
-    if input.KeyCode == CONFIG.FLY_KEY then
-        toggleHookFly()  -- This should toggle on/off with one press
-    -- ... other keys
-    end
-end)
-
 UserInputService.InputEnded:Connect(function(input, processed)
     if processed then return end
     
-    -- Flying HOLD controls (hold space/ctrl while flying)
+    -- Flying HOLD controls
     if input.KeyCode == Enum.KeyCode.Space and LocalFlying then
-        spaceKey = false  -- This resets when you RELEASE space
+        spaceKey = false
     elseif input.KeyCode == Enum.KeyCode.LeftControl and LocalFlying then
-        ctrl = false      -- This resets when you RELEASE ctrl
+        ctrl = false
     end
 end)
+
 -- ========== MAIN LOOPS ==========
 
 -- Best Animal ESP Loop
@@ -1820,8 +1764,6 @@ end)
 -- Setup anti-negative effects
 setupAntiNegativeEffects()
 
-
-
 -- Enable ragdoll movement
 enableRagdollMovement(character)
 
@@ -1833,13 +1775,6 @@ startAntiNegativeEffects()
 
 -- Setup sentry resizer
 task.spawn(setupSentryResizer)
-
--- Setup player ESP
-for _, player in pairs(Players:GetPlayers()) do
-    if player ~= Players.LocalPlayer and player.Character then
-        createPlayerBoundingBox(player)
-    end
-end
 
 -- Setup transparent decorations
 task.spawn(setupTransparentDecorations)
@@ -1858,21 +1793,6 @@ player.CharacterAdded:Connect(function(newChar)
     end
 end)
 
--- Handle player joins for ESP
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function(char)
-        createPlayerBoundingBox(player)
-    end)
-end)
-
--- Handle player leaves
-Players.PlayerRemoving:Connect(function(player)
-    if espObjects[player] then
-        espObjects[player]:Destroy()
-        espObjects[player] = nil
-    end
-end)
-
 -- Cleanup
 player.CharacterRemoving:Connect(function()
     stopFlying()
@@ -1883,23 +1803,4 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
