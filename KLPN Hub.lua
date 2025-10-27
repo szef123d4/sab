@@ -1273,6 +1273,14 @@ end
 
 -- ========== TRANSPARENT DECORATIONS ==========
 
+-- ========== CAMERA NOCLIP (INVISICAM) ==========
+
+local function setupCameraNoclip()
+    -- Set camera occlusion mode to Invisicam (camera goes through objects)
+    local Players = game:GetService("Players")
+    Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+end
+
 local function makeDecorationsTransparent(model)
     local decorations = model:FindFirstChild("Decorations")
     if decorations then
@@ -1295,6 +1303,11 @@ end
 
 local function setupTransparentDecorations()
     local plotsFolder = Workspace:WaitForChild("Plots")
+    
+    -- Setup camera noclip using Invisicam
+    setupCameraNoclip()
+    
+    -- Then setup transparent decorations
     for _, model in ipairs(plotsFolder:GetChildren()) do
         makeDecorationsTransparent(model)
     end
@@ -1601,6 +1614,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
