@@ -1481,18 +1481,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
     -- Auto Lazer
     elseif input.KeyCode == CONFIG.AUTO_LAZER_KEY then
         toggleAutoLazer()
-    -- Anti-Death Jump
-    elseif input.KeyCode == Enum.KeyCode.Space and character then
-        local humanoid = character:FindFirstChild("Humanoid")
-        if humanoid then
-            humanoid.PlatformStand = true
-            task.wait(0.1)
-            humanoid.PlatformStand = false
-            humanoid.Sit = true
-            task.wait(0.1)
-            humanoid.Sit = false
-            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
+
     -- Flying controls
     elseif input.KeyCode == Enum.KeyCode.Space and LocalFlying then
         spaceKey = true
@@ -1577,7 +1566,6 @@ player.CharacterAdded:Connect(function(newChar)
     humanoid = character:WaitForChild("Humanoid")
     root = character:WaitForChild("HumanoidRootPart")
     
-    applyAntiDeath(true)
     enableRagdollMovement(character)
     
     if flyToggle then
@@ -1614,6 +1602,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
