@@ -190,6 +190,197 @@ end
 
 
 
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local WEB_SLINGER_TOOL_NAME = "Web Slinger"
+local USE_KEY = Enum.KeyCode.K
+
+-- ========== NOTIFICATION SYSTEM ==========
+local function showNotification(title, text, isError)
+    local playerGui = player:WaitForChild("PlayerGui")
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "KillComboNotif"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = playerGui
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 280, 0, 70)
+    frame.Position = UDim2.new(0.5, -140, 0, 10)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    frame.BackgroundTransparency = 0.9
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = isError and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
+    stroke.Parent = frame
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, 0, 0, 20)
+    titleLabel.Position = UDim2.new(0, 0, 0, 5)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = title
+    titleLabel.TextColor3 = isError and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
+    titleLabel.TextSize = 14
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.Parent = frame
+
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Size = UDim2.new(1, 0, 0, 45)
+    infoLabel.Position = UDim2.new(0, 0, 0, 20)
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Text = text
+    infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    infoLabel.TextSize = 12
+    infoLabel.Font = Enum.Font.Gotham
+    infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+    infoLabel.Parent = frame
+
+    -- Auto remove after 3 seconds
+    task.spawn(function()
+        task.wait(3)
+        screenGui:Destroy()
+    end)
+end
+
+-- ========== WEB SLINGER FUNCTIONS ==========
+
+-- Function to find closest player
+local function findClosestPlayer()
+    local closestPlayer = nil
+    local closestDistance = math.huge
+    local myCharacter = player.Character
+    local myRootPart = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
+    
+    if not myRootPart then return nil end
+    
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local otherRootPart = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if otherRootPart then
+                local distance = (myRootPart.Position - otherRootPart.Position).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = otherPlayer
+                end
+            end
+        end
+    end
+    
+    return closestPlayer, closestDistance
+end
+
+-- Function to equip Web Slinger
+local function equipWebSlinger()
+    local backpack = player:WaitForChild("Backpack")
+    local character = player.Character
+    
+    if not character then return false end
+    
+    -- Look for Web Slinger in backpack
+    local webSlinger = backpack:FindFirstChild(WEB_SLINGER_TOOL_NAME)
+    
+    if webSlinger then
+        -- Unequip any currently equipped tools first
+        for _, tool in pairs(character:GetChildren()) do
+            if tool:IsA("Tool") then
+                tool.Parent = backpack
+            end
+        end
+        
+        -- Equip Web Slinger
+        webSlinger.Parent = character
+        task.wait(0.2)
+        return true
+    else
+        return false
+    end
+end
+
+-- Function to use Web Slinger on target
+local function useWebSlingerOnTarget(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return false end
+    
+    local targetHandle = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetHandle then
+        targetHandle = targetPlayer.Character:FindFirstChild("Head") or targetPlayer.Character.PrimaryPart
+    end
+    
+    if not targetHandle then return false end
+    
+    local useItemRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RE/UseItem")
+    
+    local args = {
+        targetHandle.Position,
+        targetHandle
+    }
+    
+    local success = pcall(function()
+        useItemRemote:FireServer(unpack(args))
+    end)
+    
+    return success
+end
+
+-- Function to do one teleport cycle (up and down once)
+local function doOneTeleportCycle(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    
+    local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    -- Teleport up
+    hrp.CFrame = hrp.CFrame + Vector3.new(0, 20, 0)
+    task.wait(0.3)
+    
+    -- Teleport down
+    hrp.CFrame = hrp.CFrame + Vector3.new(0, -20, 0)
+    task.wait(0.3)
+end
+
+-- Main function to execute when K is pressed
+local function onKeyPress()
+    -- Equip Web Slinger
+    local equipped = equipWebSlinger()
+    if not equipped then
+        showNotification("Error", "Couldn't find Web Slinger in backpack", true)
+        return
+    end
+    
+    -- Find closest player
+    local closestPlayer, distance = findClosestPlayer()
+    if not closestPlayer then
+        return
+    end
+    
+    -- Use Web Slinger on closest player
+    local used = useWebSlingerOnTarget(closestPlayer)
+    if used then
+        -- Wait a moment then do one teleport cycle
+        task.wait(0.5)
+        doOneTeleportCycle(closestPlayer)
+    end
+end
+
+-- Key input handler
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    
+    if input.KeyCode == USE_KEY then
+        onKeyPress()
+    end
+end)
+
+
+
 -- ========== AUTO LAZER CAP ==========
 
 local autoLazerEnabled = false
@@ -1636,6 +1827,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
