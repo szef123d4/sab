@@ -1273,25 +1273,6 @@ end
 
 -- ========== TRANSPARENT DECORATIONS ==========
 
--- ========== CAMERA NOCLIP (ALWAYS ON) ==========
-
-local function setupCameraNoclip()
-    -- Just modify the camera to ignore collisions while keeping normal controls
-    local originalCameraType = Camera.CameraType
-    
-    -- Keep the camera normal but remove collision checks
-    RunService.RenderStepped:Connect(function()
-        -- This allows the camera to position itself through objects
-        -- without changing the camera type or controls
-        if character and character:FindFirstChild("HumanoidRootPart") then
-            -- Camera will naturally go through transparent objects
-            -- No need to force camera position changes
-        end
-    end)
-    
-    showNotification("Camera Noclip", "✅ Camera can see through objects!\nNormal camera controls preserved", false)
-end
-
 local function makeDecorationsTransparent(model)
     local decorations = model:FindFirstChild("Decorations")
     if decorations then
@@ -1314,11 +1295,6 @@ end
 
 local function setupTransparentDecorations()
     local plotsFolder = Workspace:WaitForChild("Plots")
-    
-    -- Setup camera noclip (just enables seeing through transparent objects)
-    setupCameraNoclip()
-    
-    -- Then setup transparent decorations
     for _, model in ipairs(plotsFolder:GetChildren()) do
         makeDecorationsTransparent(model)
     end
@@ -1625,6 +1601,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
