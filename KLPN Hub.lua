@@ -1346,18 +1346,19 @@ end
 local function createPlayerBoundingBox(player)
     if player == Players.LocalPlayer then return end
 
-    local char = player.Character
-    if not char then return end
-
+    -- Remove existing ESP if it exists
     if espObjects[player] then
         espObjects[player]:Destroy()
         espObjects[player] = nil
     end
 
+    local char = player.Character
+    if not char then return end
+
     local color = getPlayerColor(player)
 
     local box = Instance.new("Part")
-    box.Name = "BoundingBox"
+    box.Name = "BoundingBox_" .. player.Name
     box.Anchored = true
     box.CanCollide = false
     box.Transparency = 0.4
@@ -1382,12 +1383,39 @@ local function createPlayerBoundingBox(player)
 
     espObjects[player] = box
 
+    -- Create connection to update position
     local conn
     conn = RunService.RenderStepped:Connect(function()
-        if not char or not char.PrimaryPart then
+        if not char or not char.PrimaryPart or not char:FindFirstChild("Humanoid") then
+            -- Character is dead or gone, wait for respawn
             box:Destroy()
             conn:Disconnect()
             espObjects[player] = nil
+            
+            -- Wait for character to respawn and recreate ESP
+            local characterAdded
+            characterAdded = player.CharacterAdded:Connect(function(newChar)
+                characterAdded:Disconnect()
+                task.wait(2) -- Wait for character to fully load
+                createPlayerBoundingBox(player)
+            end)
+            return
+        end
+
+        local humanoid = char:FindFirstChild("Humanoid")
+        if humanoid and humanoid.Health <= 0 then
+            -- Character is dead, remove ESP
+            box:Destroy()
+            conn:Disconnect()
+            espObjects[player] = nil
+            
+            -- Wait for respawn and recreate ESP
+            local characterAdded
+            characterAdded = player.CharacterAdded:Connect(function(newChar)
+                characterAdded:Disconnect()
+                task.wait(2) -- Wait for character to fully load
+                createPlayerBoundingBox(player)
+            end)
             return
         end
 
@@ -1398,6 +1426,37 @@ local function createPlayerBoundingBox(player)
             billboard.StudsOffset = Vector3.new(0, box.Size.Y/2 + 0.5, 0)
         end
     end)
+end
+
+-- Handle player joins for ESP
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        task.wait(2) -- Wait for character to fully load
+        createPlayerBoundingBox(player)
+    end)
+end)
+
+-- Handle player leaves
+Players.PlayerRemoving:Connect(function(player)
+    if espObjects[player] then
+        espObjects[player]:Destroy()
+        espObjects[player] = nil
+    end
+end)
+
+-- Setup player ESP for existing players
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= Players.LocalPlayer then
+        if player.Character then
+            createPlayerBoundingBox(player)
+        else
+            -- Wait for character to load
+            player.CharacterAdded:Connect(function(char)
+                task.wait(2)
+                createPlayerBoundingBox(player)
+            end)
+        end
+    end
 end
 
 -- ========== MOBILE DESYNC ==========
@@ -1827,6 +1886,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
