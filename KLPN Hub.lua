@@ -1502,15 +1502,25 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- MOVE THIS OUTSIDE: InputEnded handler for flying controls
+-- This part is CORRECT for what you want:
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+
+    -- Flying TOGGLE (press once)
+    if input.KeyCode == CONFIG.FLY_KEY then
+        toggleHookFly()  -- This should toggle on/off with one press
+    -- ... other keys
+    end
+end)
+
 UserInputService.InputEnded:Connect(function(input, processed)
     if processed then return end
     
-    -- Flying controls
+    -- Flying HOLD controls (hold space/ctrl while flying)
     if input.KeyCode == Enum.KeyCode.Space and LocalFlying then
-        spaceKey = false
+        spaceKey = false  -- This resets when you RELEASE space
     elseif input.KeyCode == Enum.KeyCode.LeftControl and LocalFlying then
-        ctrl = false
+        ctrl = false      -- This resets when you RELEASE ctrl
     end
 end)
 -- ========== MAIN LOOPS ==========
@@ -1626,6 +1636,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
