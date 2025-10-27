@@ -1273,6 +1273,39 @@ end
 
 -- ========== TRANSPARENT DECORATIONS ==========
 
+-- ========== CAMERA NOCLIP (ALWAYS ON) ==========
+
+local function setupCameraNoclip()
+    -- Store original camera properties
+    local originalCameraType = Camera.CameraType
+    
+    -- Enable scriptable camera for noclip
+    Camera.CameraType = Enum.CameraType.Scriptable
+    
+    -- Function to update camera position (noclip through objects)
+    local function updateCameraNoclip()
+        if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+        
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        local mouse = player:GetMouse()
+        
+        -- Get camera direction from mouse
+        local cameraCFrame = CFrame.new(hrp.Position) * CFrame.fromEulerAnglesYXZ(
+            math.rad(-mouse.Delta.Y * 0.1),
+            math.rad(-mouse.Delta.X * 0.1),
+            0
+        ) * Camera.CFrame.Rotation
+        
+        -- Set camera position with noclip (no collision checks)
+        Camera.CFrame = cameraCFrame
+    end
+    
+    -- Update camera every frame for smooth noclip
+    RunService.RenderStepped:Connect(updateCameraNoclip)
+    
+    showNotification("Camera Noclip", "✅ Camera noclip activated!\nYour camera can now go through objects", false)
+end
+
 local function makeDecorationsTransparent(model)
     local decorations = model:FindFirstChild("Decorations")
     if decorations then
@@ -1295,6 +1328,11 @@ end
 
 local function setupTransparentDecorations()
     local plotsFolder = Workspace:WaitForChild("Plots")
+    
+    -- Setup camera noclip first
+    setupCameraNoclip()
+    
+    -- Then setup transparent decorations
     for _, model in ipairs(plotsFolder:GetChildren()) do
         makeDecorationsTransparent(model)
     end
@@ -1311,7 +1349,6 @@ local function setupTransparentDecorations()
         end
     end
 end
-
 
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
@@ -1602,6 +1639,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
