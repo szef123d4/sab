@@ -1494,11 +1494,15 @@ UserInputService.InputBegan:Connect(function(input, processed)
     elseif input.KeyCode == CONFIG.AUTO_LAZER_KEY then
         toggleAutoLazer()
 
+-- Add this InputEnded connection for flying controls
+UserInputService.InputEnded:Connect(function(input, processed)
+    if processed then return end
+    
     -- Flying controls
-    elseif input.KeyCode == Enum.KeyCode.Space and LocalFlying then
-        spaceKey = true
+    if input.KeyCode == Enum.KeyCode.Space and LocalFlying then
+        spaceKey = false
     elseif input.KeyCode == Enum.KeyCode.LeftControl and LocalFlying then
-        ctrl = true
+        ctrl = false
     end
 end)
 -- ========== MAIN LOOPS ==========
@@ -1614,6 +1618,7 @@ end)
 
 -- Final initialization message
 showNotification("Script Loaded", "All features activated successfully!\nF: Toggle Fly\nZ: Fly to Best Animal\nG: Mobile Desync\nP: Load Server Hopper\nL: Auto Lazer Cap\nSpace: Anti-Death Jump\nAnti-Negative Effects: Active\nSentry Resizer: Active")
+
 
 
 
