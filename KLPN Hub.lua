@@ -758,18 +758,7 @@ end
 
 -- ========== RAGDOLL MOVEMENT ==========
 
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        keys[input.KeyCode] = true
-    end
-end)
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        keys[input.KeyCode] = false
-    end
-end)
 
 local function getInputVector(cam)
     local vec = Vector3.new(0,0,0)
@@ -1803,4 +1792,5 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
