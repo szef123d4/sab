@@ -454,8 +454,6 @@ UIS.InputBegan:Connect(function(input)
         running = not running
         
         if running then
-            
-            
             while running do
                 local bat = character:FindFirstChild("Bat") or player.Backpack:FindFirstChild("Bat")
                 local foundSentry = false
@@ -496,25 +494,17 @@ UIS.InputBegan:Connect(function(input)
                                         
                                         -- Hit
                                         bat:Activate()
-                                        
-                                        
                                     end
                                 end
                             end
                         end
                     end
-                    
-                    -- DO NOTHING if no sentries found - no prints, no bat changes
                 end
                 wait()
             end
-        else
-            
         end
     end
 end)
-
-
 
 -- ========== ANTI-NEGATIVE EFFECTS ==========
 
@@ -1845,6 +1835,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
