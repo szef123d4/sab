@@ -443,36 +443,78 @@ end
 
 -- ========== SENTRY RESIZER ==========
 
-local function resizeSentry(part)
-    if part:IsA("Part") and part.Name:sub(1,7) == "Sentry_" then
-        part.Size = Vector3.new(50, 50, 100)
-        part.CanCollide = false
+local UIS = game:GetService("UserInputService")
+local player = game:GetService("Players").LocalPlayer
+local character = player.Character
+local rootPart = character.HumanoidRootPart
+local running = false
+
+UIS.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.N then
+        running = not running
         
-        part.Transparency = 0.5
-        part.Material = Enum.Material.Neon
-        part.Color = Color3.fromRGB(255, 0, 0)
+        if running then
+            
+            
+            while running do
+                local bat = character:FindFirstChild("Bat") or player.Backpack:FindFirstChild("Bat")
+                local foundSentry = false
+                
+                if bat then
+                    for _, obj in pairs(workspace:GetChildren()) do
+                        if not running then break end
+                        if obj.Name:find("Sentry_") then
+                            local setupFrame = obj:FindFirstChild("SetupFrame")
+                            local mainFrame = setupFrame and setupFrame:FindFirstChild("MainFrame")
+                            local timeText = mainFrame and mainFrame:FindFirstChild("Time")
+                            
+                            if timeText and timeText:IsA("TextLabel") then
+                                local timeStr = timeText.Text:gsub("s!", "")
+                                local timeNum = tonumber(timeStr)
+                                
+                                if timeNum and timeNum >= 1 and timeNum <= 60 then
+                                    foundSentry = true
+                                    
+                                    -- Try to equip bat, but only proceed if successful
+                                    local equipSuccess = pcall(function()
+                                        bat.Parent = character
+                                    end)
+                                    
+                                    if equipSuccess and bat.Parent == character then
+                                        -- Resize
+                                        if obj:IsA("Model") and obj.PrimaryPart then
+                                            obj.PrimaryPart.Size = Vector3.new(10, 10, 10)
+                                        end
+                                        
+                                        -- Teleport
+                                        local hitCFrame = rootPart.CFrame * CFrame.new(0, 0, -2)
+                                        if obj:IsA("Model") and obj.HumanoidRootPart then
+                                            obj.HumanoidRootPart.CFrame = hitCFrame
+                                        else
+                                            obj:PivotTo(hitCFrame)
+                                        end
+                                        
+                                        -- Hit
+                                        bat:Activate()
+                                        
+                                        
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- DO NOTHING if no sentries found - no prints, no bat changes
+                end
+                wait()
+            end
+        else
+            
+        end
     end
-end
+end)
 
-local function setupSentryResizer()
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        resizeSentry(obj)
-    end
 
-    Workspace.ChildAdded:Connect(function(child)
-        resizeSentry(child)
-    end)
-    
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        resizeSentry(obj)
-    end
-    
-    Workspace.DescendantAdded:Connect(function(descendant)
-        resizeSentry(descendant)
-    end)
-    
-    showNotification("Sentry Resizer", "✅ Sentry resizer activated!\nAll sentries will be resized.")
-end
 
 -- ========== ANTI-NEGATIVE EFFECTS ==========
 
@@ -1803,6 +1845,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
