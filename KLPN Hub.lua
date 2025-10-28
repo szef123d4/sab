@@ -1,5 +1,4 @@
--- Ultimate Pet Simulator X Script Collection
--- Combined into one organized script
+
 
 if game.PlaceId ~= 109983668079237 then
     return
@@ -1835,6 +1834,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
