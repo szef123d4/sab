@@ -960,11 +960,24 @@ local function runServerCheck()
     -- Send webhooks for current server (only once per server)
     local webhookSuccess = sendAnimalWebhooks()
     
+    -- ADD PROPER WAIT TIME HERE - This is the key fix
     if webhookSuccess then
-        task.wait(5)
+        showNotification("Webhook Sent", "Waiting before checking pets...", 8)
+        local waitTime = 8
+        local startTime = tick()
+        while tick() - startTime < waitTime and isRunning do
+            task.wait(0.1)
+        end
     else
-        task.wait(3)
+        showNotification("No Animals", "No animals found in this server", 5)
+        local waitTime = 5
+        local startTime = tick()
+        while tick() - startTime < waitTime and isRunning do
+            task.wait(0.1)
+        end
     end
+    
+    if not isRunning then return end
     
     local foundPets, results = checkPodiumsForWebhooksAndFilters()
     
@@ -990,7 +1003,7 @@ local function runServerCheck()
             local extra = #displayResults - 3
             foundText = foundText .. " and " .. extra .. " more..."
         end
-        showNotification("Found", foundText)
+        showNotification("Found Target!", foundText, 10)
         playFoundSound()
         
         monitorFoundPodiums()
@@ -1001,7 +1014,17 @@ local function runServerCheck()
     
     settings.hopCount = settings.hopCount + 1
     saveSettings()
-    tryTeleportWithRetries()
+    
+    -- Add a small delay before hopping to next server
+    showNotification("Hopping", "Moving to next server...", 2)
+    local startTime = tick()
+    while tick() - startTime < 2 and isRunning do
+        task.wait(0.1)
+    end
+    
+    if isRunning then
+        tryTeleportWithRetries()
+    end
 end
 
  local function createTagList(parent, list, placeholder, onAdd, onRemove)
