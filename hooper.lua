@@ -4,7 +4,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 
--- WEBHOOK URLs
+-- WEBHOOK URLs from script 1
 local WEBHOOK_URL_LOW = "https://discord.com/api/webhooks/1433203505740513401/87dI6dzUJJ8SX8P_INJAmhhuodKYAUWtTSMaRb4S_WUP-kx89bfnBtDNnlL6JroU4h3S"
 local WEBHOOK_URL_HIGH = "https://discord.com/api/webhooks/1433203555631890552/OblORXzmJC0DhUSYlzn5mpTOcaDmUsiIyhrE9dVs9jFX87UDocrezJDHqaRyZ8OVVw4i"
 
@@ -13,11 +13,7 @@ local ALLOWED_PLACE_ID = 109983668079237
 local isRunning = true
 local RETRY_DELAY = 0.1
 
--- Track recently visited servers (EXACT from 2nd script)
-local recentServers = {}
-local MAX_RECENT_SERVERS = 20
-
--- Server hopping API state (EXACT COPY from 2nd script)
+-- Server hopping API state
 local apiState = {
     mainApiUses = 0,
     cachedServers = {},
@@ -35,16 +31,7 @@ local function showNotification(text)
     print("[ServerHopper] " .. text)
 end
 
--- Add server to recent list (EXACT from 2nd script)
-local function addToRecentServers(serverId)
-    table.insert(recentServers, serverId)
-    -- Keep only the most recent servers
-    while #recentServers > MAX_RECENT_SERVERS do
-        table.remove(recentServers, 1)
-    end
-end
-
--- Extract money value from generation text
+-- Extract money value from generation text (from script 1)
 local function extractNumber(str)
     if not str then return 0 end
     local numberStr = str:match("%$(.-)/s")
@@ -64,7 +51,7 @@ local function extractNumber(str)
     return (tonumber(numberStr) or 0) * multiplier
 end
 
--- Get animal data from overhead
+-- Get animal data from overhead (from script 1)
 local function getAnimalData(overhead)
     if not overhead then return nil end
     
@@ -84,7 +71,7 @@ local function getAnimalData(overhead)
     return nil
 end
 
--- Find all animals in the server
+-- Find all animals in the server (from script 1)
 local function findAllAnimals()
     local animals = {}
     local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -112,7 +99,7 @@ local function findAllAnimals()
     return animals
 end
 
--- Send webhook for animals
+-- Send webhook for animals (from script 1)
 local function sendAnimalWebhooks()
     local animals = findAllAnimals()
     if #animals == 0 then return false end
@@ -248,7 +235,7 @@ local function sendAnimalWebhooks()
     return success
 end
 
--- EXACT COPY OF SERVER HOPPING LOGIC FROM 2ND SCRIPT
+-- Server hopping functions from script 2
 local function checkAPIAvailability()
     local mainAPI = "https://games.roblox.com/v1/games/" .. ALLOWED_PLACE_ID .. "/servers/Public?sortOrder=" .. settings.sortOrder .. "&limit=100&excludeFullGames=true"
     local success, response = pcall(function() return game:HttpGet(mainAPI) end)
@@ -275,7 +262,7 @@ local function getServersFromAPI(baseUrl, isMainAPI)
         if not body.data then break end
         
         for _, v in body.data do
-            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId and not table.find(recentServers, v.id) then
+            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId then
                 table.insert(servers, v.id)
                 if not table.find(apiState.cachedServers, v.id) then
                     table.insert(apiState.cachedServers, v.id)
@@ -299,7 +286,7 @@ local function getCachedServers()
     local availableServers = {}
     
     for _, serverId in ipairs(apiState.cachedServers) do
-        if serverId ~= game.JobId and not table.find(recentServers, serverId) then
+        if serverId ~= game.JobId then
             table.insert(availableServers, serverId)
         end
     end
@@ -327,7 +314,6 @@ local function getAvailableServers()
     return getCachedServers()
 end
 
--- EXACT COPY of tryTeleportWithRetries from 2nd script
 local function tryTeleportWithRetries()
     if not isRunning then
         return
@@ -338,21 +324,19 @@ local function tryTeleportWithRetries()
     while attempts < maxAttempts and isRunning do
         local servers = getAvailableServers()
         if #servers == 0 then
+            showNotification("No available servers found, retrying...")
             task.wait(RETRY_DELAY)
             attempts = attempts + 1
             continue
         end
         local randomServer = servers[math.random(1, #servers)]
-        
-        -- Add to recent servers BEFORE attempting teleport (EXACT from 2nd script)
-        addToRecentServers(randomServer)
-        
         local success, err = pcall(function()
             TPS:TeleportToPlaceInstance(ALLOWED_PLACE_ID, randomServer)
         end)
         if success then
             return
         else
+            showNotification("Teleport failed: " .. tostring(err))
             if not isRunning then
                 return
             end
@@ -365,7 +349,7 @@ local function tryTeleportWithRetries()
     end
 end
 
--- EXACT COPY of main loop logic from 2nd script
+-- Main loop with webhooks integrated
 local function runServerCheck()
     if not isRunning then return end
     
@@ -387,7 +371,7 @@ local function runServerCheck()
     tryTeleportWithRetries()
 end
 
--- Main loop with EXACT timing from 2nd script
+-- Main loop with EXACT timing from script 2
 local function mainLoop()
     showNotification("Starting continuous server hopping with webhooks...")
     
@@ -420,7 +404,6 @@ end
 showNotification("KLPN Hub Server Hopper Started!")
 showNotification("Webhook LOW: 0-10M | Webhook HIGH: 10M+")
 showNotification("Ignoring Lucky Block animals")
-showNotification("Anti-duplicate: Won't rejoin recent " .. MAX_RECENT_SERVERS .. " servers")
 
 -- Start main loop and keep-alive
 task.spawn(mainLoop)
