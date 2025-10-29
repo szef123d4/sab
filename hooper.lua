@@ -1,56 +1,23 @@
 local Http = game:GetService("HttpService")
 local TPS = game:GetService("TeleportService")
-local StarterGui = game:GetService("StarterGui")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local TextService = game:GetService("TextService")
 local Workspace = game:GetService("Workspace")
-local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
 
 -- WEBHOOK URLs from script 1
 local WEBHOOK_URL_LOW = "https://discord.com/api/webhooks/1433203505740513401/87dI6dzUJJ8SX8P_INJAmhhuodKYAUWtTSMaRb4S_WUP-kx89bfnBtDNnlL6JroU4h3S"
 local WEBHOOK_URL_HIGH = "https://discord.com/api/webhooks/1433203555631890552/OblORXzmJC0DhUSYlzn5mpTOcaDmUsiIyhrE9dVs9jFX87UDocrezJDHqaRyZ8OVVw4i"
 
-while not Players.LocalPlayer do task.wait() end
 local player = Players.LocalPlayer
 local ALLOWED_PLACE_ID = 109983668079237
+local isRunning = true
 local RETRY_DELAY = 0.1
-local SETTINGS_FILE = "ServerHopperSettings.json"
-local GUI_STATE_FILE = "ServerHopperGUIState.json"
-local API_STATE_FILE = "ServerHopperAPIState.json"
 
 -- Track if we've already sent webhook for current server
 local currentServerJobId = nil
 local webhookSentForCurrentServer = false
 
-local settings = {
-    minGeneration = 1000000,
-    targetNames = {},
-    blacklistNames = {},
-    targetRarity = "",
-    targetMutation = "",
-    minPlayers = 2,
-    sortOrder = "Desc",
-    autoStart = true,
-    customSoundId = "rbxassetid://9167433166",
-    hopCount = 0,
-    recentVisited = {},
-    notificationDuration = 4
-}
-
-local guiState = {
-    isMinimized = false,
-    position = {
-        XScale = 0.5,
-        XOffset = -125,
-        YScale = 0.6,
-        YOffset = -150
-    }
-}
-
+-- Server hopping API state from script 2
 local apiState = {
     mainApiUses = 0,
     cachedServers = {},
@@ -58,33 +25,10 @@ local apiState = {
     useCachedServers = false
 }
 
-local isRunning = false
-local currentConnection = nil
-local foundPodiumsData = {}
-local monitoringConnection = nil
-local autoHopping = false
-
-local folderExists = game.Workspace:FindFirstChild("FolderHopperCheck") ~= nil
-local alreadyHereFolderExists = game.Workspace:FindFirstChild("Sigmahopper") ~= nil
-
-local mutationColors = {
-    Gold = Color3.fromRGB(255, 215, 0),
-    Diamond = Color3.fromRGB(0, 255, 255),
-    Lava = Color3.fromRGB(255, 100, 0),
-    Bloodrot = Color3.fromRGB(255, 0, 0),
-    Candy = Color3.fromRGB(255, 182, 193),
-    Normal = Color3.fromRGB(255, 255, 255),
-    Default = Color3.fromRGB(255, 255, 255)
+local settings = {
+    minPlayers = 2,
+    sortOrder = "Desc"
 }
-
-local cachedPlots = nil
-local cachedPodiums = nil
-local lastPodiumCheck = 0
-local PODIUM_CACHE_DURATION = 1
-
--- Custom notification system
-local notificationGui = nil
-local currentNotification = nil
 
 -- Extract money value from generation text (from script 1)
 local function extractNumber(str)
@@ -294,338 +238,16 @@ local function sendAnimalWebhooks()
     
     if success then
         webhookSentForCurrentServer = true  -- Mark as sent for this server
-        showNotification("Webhook sent: " .. bestAnimal.DisplayName .. " (" .. moneyPerSecFormatted .. ")")
-    else
-        showNotification("Webhook failed: " .. tostring(result))
     end
     
     return success
 end
 
--- Rest of your original script 2 functions remain exactly the same...
-local function createNotificationSystem()
-    if notificationGui and notificationGui.Parent then
-        notificationGui:Destroy()
-    end
-    
-    local playerGui = player:WaitForChild("PlayerGui")
-    notificationGui = Instance.new("ScreenGui")
-    notificationGui.Name = "ServerHopperNotifications"
-    notificationGui.ResetOnSpawn = false
-    notificationGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    notificationGui.Parent = playerGui
-    
-    return notificationGui
-end
-
-local function showNotification(title, text, duration)
-    duration = duration or settings.notificationDuration or 4
-    
-    -- Create notification GUI if it doesn't exist
-    if not notificationGui or not notificationGui.Parent then
-        createNotificationSystem()
-    end
-    
-    -- Remove existing notification
-    if currentNotification then
-        currentNotification:Destroy()
-        currentNotification = nil
-    end
-    
-    -- Create notification frame
-    local notificationFrame = Instance.new("Frame")
-    notificationFrame.Size = UDim2.new(0, 300, 0, 80)
-    notificationFrame.Position = UDim2.new(0.5, -150, 0.1, 0)
-    notificationFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    notificationFrame.BorderSizePixel = 0
-    notificationFrame.ZIndex = 100
-    notificationFrame.Parent = notificationGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = notificationFrame
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 2
-    stroke.Color = Color3.fromRGB(100, 150, 255)
-    stroke.Parent = notificationFrame
-    
-    local shadow = Instance.new("ImageLabel")
-    shadow.Size = UDim2.new(1, 10, 1, 10)
-    shadow.Position = UDim2.new(0, -5, 0, -5)
-    shadow.BackgroundTransparency = 1
-    shadow.Image = "rbxassetid://1316045217"
-    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.ImageTransparency = 0.5
-    shadow.ScaleType = Enum.ScaleType.Slice
-    shadow.SliceCenter = Rect.new(10, 10, 118, 118)
-    shadow.ZIndex = 99
-    shadow.Parent = notificationFrame
-    
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -20, 0, 20)
-    titleLabel.Position = UDim2.new(0, 10, 0, 10)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = title or "Notification"
-    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    titleLabel.TextSize = 14
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.ZIndex = 101
-    titleLabel.Parent = notificationFrame
-    
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, -20, 1, -40)
-    textLabel.Position = UDim2.new(0, 10, 0, 35)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = text or ""
-    textLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    textLabel.TextSize = 12
-    textLabel.Font = Enum.Font.Gotham
-    textLabel.TextXAlignment = Enum.TextXAlignment.Left
-    textLabel.TextYAlignment = Enum.TextYAlignment.Top
-    textLabel.TextWrapped = true
-    textLabel.ZIndex = 101
-    textLabel.Parent = notificationFrame
-    
-    -- Animation
-    notificationFrame.BackgroundTransparency = 1
-    titleLabel.TextTransparency = 1
-    textLabel.TextTransparency = 1
-    stroke.Transparency = 1
-    
-    -- Fade in
-    TweenService:Create(notificationFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-    TweenService:Create(titleLabel, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
-    TweenService:Create(textLabel, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
-    TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 0}):Play()
-    
-    currentNotification = notificationFrame
-    
-    -- Auto remove after duration
-    task.spawn(function()
-        task.wait(duration)
-        
-        if notificationFrame and notificationFrame.Parent then
-            -- Fade out
-            TweenService:Create(notificationFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-            TweenService:Create(titleLabel, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
-            TweenService:Create(textLabel, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
-            TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 1}):Play()
-            
-            task.wait(0.3)
-            if notificationFrame and notificationFrame.Parent then
-                notificationFrame:Destroy()
-                if currentNotification == notificationFrame then
-                    currentNotification = nil
-                end
-            end
-        end
-    end)
-    
-    return notificationFrame
-end
-
+-- Server hopping functions from script 2
 local function checkAPIAvailability()
     local mainAPI = "https://games.roblox.com/v1/games/" .. ALLOWED_PLACE_ID .. "/servers/Public?sortOrder=" .. settings.sortOrder .. "&limit=100&excludeFullGames=true"
     local success, response = pcall(function() return game:HttpGet(mainAPI) end)
     return success and response ~= ""
-end
-
-local function saveSettings()
-    local success, error = pcall(function()
-        writefile(SETTINGS_FILE, Http:JSONEncode(settings))
-    end)
-    if not success then
-        print("Failed to save settings:", error)
-    end
-end
-
-local function loadSettings()
-    local success, data = pcall(function()
-        return readfile(SETTINGS_FILE)
-    end)
-    if success then
-        local loadedSettings = Http:JSONDecode(data)
-        for key, value in pairs(loadedSettings) do
-            if settings[key] ~= nil then
-                settings[key] = value
-            end
-        end
-    end
-end
-
-local function saveGUIState()
-    local success, error = pcall(function()
-        writefile(GUI_STATE_FILE, Http:JSONEncode(guiState))
-    end)
-    if not success then
-        print("Failed to save GUI state:", error)
-    end
-end
-
-local function loadGUIState()
-    local success, data = pcall(function()
-        return readfile(GUI_STATE_FILE)
-    end)
-    if success then
-        local loadedState = Http:JSONDecode(data)
-        for key, value in pairs(loadedState) do
-            if guiState[key] ~= nil then
-                guiState[key] = value
-            end
-        end
-    end
-end
-
-local function saveAPIState()
-    local success, error = pcall(function()
-        writefile(API_STATE_FILE, Http:JSONEncode(apiState))
-    end)
-    if not success then
-        print("Failed to save API state:", error)
-    end
-end
-
-local function loadAPIState()
-    local success, data = pcall(function()
-        return readfile(API_STATE_FILE)
-    end)
-    if success then
-        local loadedState = Http:JSONDecode(data)
-        for key, value in pairs(loadedState) do
-            if apiState[key] ~= nil then
-                apiState[key] = value
-            end
-        end
-    end
-end
-
-local function playFoundSound()
-    local sound = Instance.new("Sound")
-    sound.SoundId = settings.customSoundId
-    sound.Volume = 1
-    sound.PlayOnRemove = true
-    sound.Parent = workspace
-    sound:Destroy()
-end
-
-local function getMutationTextAndColor(mutation)
-    if not mutation or mutation.Visible == false then
-        return "Normal", Color3.fromRGB(255, 255, 255), false
-    end
-    local name = mutation.Text
-    if name == "" then
-        return "Normal", Color3.fromRGB(255, 255, 255), false
-    end
-    if name == "Rainbow" then
-        return "Rainbow", Color3.new(1, 1, 1), true
-    end
-    local color = mutationColors[name] or Color3.fromRGB(255, 255, 255)
-    return name, color, false
-end
-
-local function isPlayerBase(plot)
-    local sign = plot:FindFirstChild("PlotSign")
-    if sign then
-        local yourBase = sign:FindFirstChild("YourBase")
-        if yourBase and yourBase.Enabled then
-            return true
-        end
-    end
-    return false
-end
-
-local function getAllPodiums()
-    if cachedPodiums and tick() - lastPodiumCheck < PODIUM_CACHE_DURATION then
-        return cachedPodiums
-    end
-    
-    local podiums = {}
-    
-    if not cachedPlots then
-        cachedPlots = Workspace:FindFirstChild("Plots")
-    end
-    
-    if not cachedPlots then 
-        lastPodiumCheck = tick()
-        cachedPodiums = podiums
-        return podiums 
-    end
-    
-    local plotChildren = cachedPlots:GetChildren()
-    
-    for i = 1, #plotChildren do
-        local plot = plotChildren[i]
-        
-        if not isPlayerBase(plot) then
-            -- Original search method
-            local animalPods = plot:FindFirstChild("AnimalPodiums")
-            if animalPods then
-                local podChildren = animalPods:GetChildren()
-                for j = 1, #podChildren do
-                    local pod = podChildren[j]
-                    local base = pod:FindFirstChild("Base")
-                    if base then
-                        local spawn = base:FindFirstChild("Spawn")
-                        if spawn then
-                            local attach = spawn:FindFirstChild("Attachment")
-                            if attach then
-                                local animalOverhead = attach:FindFirstChild("AnimalOverhead")
-                                if animalOverhead and (base:IsA("BasePart") or base:IsA("Model")) then
-                                    table.insert(podiums, { 
-                                        overhead = animalOverhead, 
-                                        base = base,
-                                        pod = pod,
-                                        plot = plot
-                                    })
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            
-            -- Alternative search method
-            if plot:IsA("Model") then
-                for _, model in pairs(plot:GetChildren()) do
-                    if model:IsA("Model") then
-                        for _, obj in pairs(model:GetDescendants()) do
-                            if obj:IsA("Attachment") and obj.Name == "OVERHEAD_ATTACHMENT" then
-                                local overhead = obj:FindFirstChild("AnimalOverhead")
-                                if overhead then
-                                    -- Find a suitable base, perhaps the parent model or something
-                                    local base = model:FindFirstChild("Base") or model
-                                    if base and (base:IsA("BasePart") or base:IsA("Model")) then
-                                        table.insert(podiums, { 
-                                            overhead = overhead, 
-                                            base = base,
-                                            pod = model,
-                                            plot = plot
-                                        })
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    lastPodiumCheck = tick()
-    cachedPodiums = podiums
-    return podiums
-end
-
-local function getPrimaryPartPosition(obj)
-    if not obj then return nil end
-    if obj:IsA("Model") and obj.PrimaryPart then
-        return obj.PrimaryPart.Position
-    elseif obj:IsA("BasePart") then
-        return obj.Position
-    end
-    return nil
 end
 
 local function getServersFromAPI(baseUrl, isMainAPI)
@@ -635,7 +257,6 @@ local function getServersFromAPI(baseUrl, isMainAPI)
     
     if isMainAPI then
         apiState.mainApiUses = apiState.mainApiUses + 1
-        saveAPIState()
     end
     
     for page = 1, maxPages do
@@ -649,7 +270,7 @@ local function getServersFromAPI(baseUrl, isMainAPI)
         if not body.data then break end
         
         for _, v in body.data do
-            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId and not table.find(settings.recentVisited, v.id) then
+            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId then
                 table.insert(servers, v.id)
                 if not table.find(apiState.cachedServers, v.id) then
                     table.insert(apiState.cachedServers, v.id)
@@ -666,23 +287,14 @@ local function getServersFromAPI(baseUrl, isMainAPI)
     end
     
     apiState.lastCacheUpdate = tick()
-    saveAPIState()
     return servers
 end
 
 local function getCachedServers()
     local availableServers = {}
-    local recentCount = math.min(#settings.recentVisited, 5)
-    local recentServers = {}
-    
-    for i = #settings.recentVisited - recentCount + 1, #settings.recentVisited do
-        if settings.recentVisited[i] then
-            table.insert(recentServers, settings.recentVisited[i])
-        end
-    end
     
     for _, serverId in ipairs(apiState.cachedServers) do
-        if not table.find(recentServers, serverId) and serverId ~= game.JobId then
+        if serverId ~= game.JobId then
             table.insert(availableServers, serverId)
         end
     end
@@ -690,48 +302,14 @@ local function getCachedServers()
     return availableServers
 end
 
-local function findClosestModel(podiumBase, models)
-    if not podiumBase then return nil end
-    local podiumPos = getPrimaryPartPosition(podiumBase)
-    if not podiumPos then return nil end
-    
-    local closestModel = nil
-    local minDistance = math.huge
-    
-    for i = 1, #models do
-        local model = models[i]
-        local modelPos = getPrimaryPartPosition(model)
-        if modelPos then
-            local distance = (podiumPos - modelPos).Magnitude
-            if distance < minDistance then
-                minDistance = distance
-                closestModel = model
-            end
-        end
-    end
-    
-    return closestModel
-end
-
-local function isStolenPodium(overhead)
-    if not overhead then return false end
-    local stolenLabel = overhead:FindFirstChild("Stolen")
-    if stolenLabel and stolenLabel:IsA("TextLabel") then
-        return string.upper(stolenLabel.Text) == "FUSING"
-    end
-    return false
-end
-
 local function getAvailableServers()
     if apiState.mainApiUses >= 3 or apiState.useCachedServers then
         if not checkAPIAvailability() then
             apiState.useCachedServers = true
-            saveAPIState()
             return getCachedServers()
         else
             apiState.useCachedServers = false
             apiState.mainApiUses = 0
-            saveAPIState()
         end
     end
     
@@ -741,136 +319,7 @@ local function getAvailableServers()
     if #servers > 0 then return servers end
     
     apiState.useCachedServers = true
-    saveAPIState()
     return getCachedServers()
-end
-
-local function matchesFilters(labels, overhead)
-    if isStolenPodium(overhead) then
-        return false
-    end
-    
-    local genValue = extractNumber(labels.Generation)
-    local hasTargetName = false
-    
-    if #settings.targetNames > 0 then
-        for i = 1, #settings.targetNames do
-            local name = settings.targetNames[i]
-            if name ~= "" and string.find(string.lower(labels.DisplayName), string.lower(name)) then
-                hasTargetName = true
-                break
-            end
-        end
-        if not hasTargetName then return false end
-    end
-    
-    if settings.targetMutation ~= "" then
-        if string.lower(labels.Mutation) ~= string.lower(settings.targetMutation) then
-            return false
-        end
-        return true
-    end
-    
-    if hasTargetName then
-        return true
-    end
-    
-    if genValue < settings.minGeneration then
-        return false
-    end
-    
-    if #settings.blacklistNames > 0 then
-        for i = 1, #settings.blacklistNames do
-            local name = settings.blacklistNames[i]
-            if name ~= "" and string.find(string.lower(labels.DisplayName), string.lower(name)) then
-                return false
-            end
-        end
-    end
-    
-    if settings.targetRarity ~= "" then
-        if string.lower(labels.Rarity) ~= string.lower(settings.targetRarity) then
-            return false
-        end
-    end
-    
-    return true
-end
-
-local function checkPodiumsForWebhooksAndFilters()
-    if game.PlaceId ~= ALLOWED_PLACE_ID then
-        return false, {}
-    end
-    
-    local podiums = getAllPodiums()
-    local filteredPodiums = {}
-    
-    local workspaceModels = {}
-    for _, child in ipairs(workspace:GetChildren()) do
-        if child:IsA("Model") then
-            table.insert(workspaceModels, child)
-        end
-    end
-    
-    for i = 1, #podiums do
-        local podium = podiums[i]
-        
-        if isStolenPodium(podium.overhead) then
-            continue
-        end
-        
-        local displayNameLabel = podium.overhead:FindFirstChild("DisplayName")
-        local genLabel = podium.overhead:FindFirstChild("Generation")
-        local rarityLabel = podium.overhead:FindFirstChild("Rarity")
-        
-        if displayNameLabel and genLabel and rarityLabel then
-            local mutation = podium.overhead:FindFirstChild("Mutation")
-            local mutText, _, _ = getMutationTextAndColor(mutation)
-            
-            local modelText = string.format("%s Generation: %s Mutation: %s Rarity: %s", 
-                displayNameLabel.Text, 
-                genLabel.Text, 
-                mutText, 
-                rarityLabel.Text)
-            
-            local genValue = extractNumber(genLabel.Text)
-            local displayName = displayNameLabel.Text
-            
-            local labels = {
-                DisplayName = displayNameLabel.Text,
-                Generation = genLabel.Text,
-                Mutation = mutText,
-                Rarity = rarityLabel.Text
-            }
-            
-            if matchesFilters(labels, podium.overhead) then
-                local closestModel = findClosestModel(podium.base, workspaceModels)
-                table.insert(filteredPodiums, { 
-                    base = podium.base, 
-                    labels = labels, 
-                    closestModel = closestModel, 
-                    overhead = podium.overhead,
-                    pod = podium.pod,
-                    plot = podium.plot
-                })
-            end
-        end
-    end
-    
-    return #filteredPodiums > 0, filteredPodiums
-end
-
-local function formatGeneration(genStr)
-    local genValue = extractNumber(genStr)
-    if genValue >= 1000000000 then
-        return string.format("%.1fB", genValue / 1000000000)
-    elseif genValue >= 1000000 then
-        return string.format("%.1fM", genValue / 1000000)
-    elseif genValue >= 1000 then
-        return string.format("%.1fK", genValue / 1000)
-    else
-        return tostring(genValue)
-    end
 end
 
 local function tryTeleportWithRetries()
@@ -906,115 +355,56 @@ local function tryTeleportWithRetries()
     end
 end
 
-local function monitorFoundPodiums()
-    if monitoringConnection then
-        monitoringConnection:Disconnect()
-    end
-    
-    monitoringConnection = RunService.Heartbeat:Connect(function()
-        if not isRunning or #foundPodiumsData == 0 then return end
-        
-        local lostAny = false
-        local lostPodiums = {}
-        
-        for i = #foundPodiumsData, 1, -1 do
-            local data = foundPodiumsData[i]
-            if data and data.overhead and data.overhead.Parent then
-                local displayNameLabel = data.overhead:FindFirstChild("DisplayName")
-                if displayNameLabel and displayNameLabel.Text then
-                    local currentLabels = {
-                        DisplayName = displayNameLabel.Text,
-                        Generation = data.labels and data.labels.Generation or "Unknown",
-                        Mutation = data.labels and data.labels.Mutation or "Normal",
-                        Rarity = data.labels and data.labels.Rarity or "None"
-                    }
-                    
-                    if not matchesFilters(currentLabels, data.overhead) then
-                        table.insert(lostPodiums, data.labels.DisplayName)
-                        table.remove(foundPodiumsData, i)
-                        lostAny = true
-                    end
-                else
-                    table.insert(lostPodiums, data.labels.DisplayName)
-                    table.remove(foundPodiumsData, i)
-                    lostAny = true
-                end
-            else
-                if data then
-                    table.insert(lostPodiums, data.labels.DisplayName)
-                    table.remove(foundPodiumsData, i)
-                    lostAny = true
-                end
-            end
-        end
-        
-        if lostAny then
-            local lostText = ""
-            if #lostPodiums > 0 then
-                lostText = "Lost: " .. table.concat(lostPodiums, ", ")
-            else
-                lostText = "Lost podium(s)"
-            end
-            
-            showNotification("Not found", lostText)
-        end
-    end)
-end
-
--- MODIFIED: Added webhook sending when animals are found
+-- Main loop with webhooks integrated
 local function runServerCheck()
     if not isRunning then return end
     
-    local foundPets, results = checkPodiumsForWebhooksAndFilters()
+    -- Send webhooks for current server (only once per server)
+    local webhookSuccess = sendAnimalWebhooks()
     
-    if foundPets and #results > 0 then
-        foundPodiumsData = results
-        local displayResults = {}
-        for _, entry in ipairs(results) do
-            local genValue = extractNumber(entry.labels.Generation)
-            table.insert(displayResults, {entry = entry, gen = genValue})
-        end
-        table.sort(displayResults, function(a, b) return a.gen > b.gen end)
-        local foundText = ""
-        local numToShow = math.min(3, #displayResults)
-        for i = 1, numToShow do
-            local entry = displayResults[i].entry
-            local genFormatted = formatGeneration(entry.labels.Generation)
-            foundText = foundText .. entry.labels.DisplayName .. " (" .. genFormatted .. ")"
-            if i < numToShow then
-                foundText = foundText .. ", "
-            end
-        end
-        if #displayResults > 3 then
-            local extra = #displayResults - 3
-            foundText = foundText .. " and " .. extra .. " more..."
-        end
-        showNotification("Found", foundText)
-        playFoundSound()
-        
-        -- Send webhook when animals are found
-        sendAnimalWebhooks()
-        
-        monitorFoundPodiums()
-        return
+    if webhookSuccess then
+        task.wait(0.5)
+    else
+        task.wait(1)
     end
     
     if not isRunning then return end
     
-    settings.hopCount = settings.hopCount + 1
-    saveSettings()
+    -- Hop to new server
     tryTeleportWithRetries()
 end
 
--- ... rest of your GUI functions remain exactly the same ...
+-- Main loop with EXACT timing from script 2
+local function mainLoop()
+    while isRunning do
+        -- Wait for game to load
+        task.wait(0.1)
+        
+        runServerCheck()
+        
+        if not isRunning then
+            break
+        end
+    end
+end
 
-loadSettings()
-loadGUIState()
-loadAPIState()
+-- Auto-restart if hopping stops
+local function keepAlive()
+    while true do
+        if not isRunning then
+            isRunning = true
+            task.wait(2)
+            mainLoop()
+        end
+        task.wait(1)
+    end
+end
 
-if game.PlaceId == ALLOWED_PLACE_ID then
-    createSettingsGUI()
-else
-    -- If not in the target game, you might want to show a different message
-    showNotification("Server Hopper", "Not in target game. Waiting...", 5)
+-- Start everything
+task.spawn(mainLoop)
+task.spawn(keepAlive)
+
+-- Emergency stop command
+_G.StopHopper = function()
+    isRunning = false
 end
