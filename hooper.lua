@@ -13,9 +13,7 @@ local ALLOWED_PLACE_ID = 109983668079237
 local isRunning = true
 local RETRY_DELAY = 0.1
 
--- Track recently visited servers (last 20 servers)
-local recentServers = {}
-local MAX_RECENT_SERVERS = 20
+
 
 -- Server hopping API state (EXACT COPY from 2nd script)
 local apiState = {
