@@ -396,9 +396,6 @@ end
 local function mainLoop()
     while isRunning do
         runServerCheck()
-        if #foundPodiumsData > 0 then
-            break
-        end
         task.wait(0.1)
     end
 end
@@ -424,4 +421,4 @@ _G.StopHopper = function()
     isRunning = false
 end
 
-print("bla")
+print("Server hopper started successfully!")
