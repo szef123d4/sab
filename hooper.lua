@@ -11,10 +11,24 @@ local WEBHOOK_URL_HIGH = "https://discord.com/api/webhooks/1433203555631890552/O
 local player = Players.LocalPlayer
 local ALLOWED_PLACE_ID = 109983668079237
 local isRunning = true
+local RETRY_DELAY = 0.1
 
 -- Track recently visited servers (last 20 servers)
 local recentServers = {}
 local MAX_RECENT_SERVERS = 20
+
+-- Server hopping API state (EXACT COPY from 2nd script)
+local apiState = {
+    mainApiUses = 0,
+    cachedServers = {},
+    lastCacheUpdate = 0,
+    useCachedServers = false
+}
+
+local settings = {
+    minPlayers = 2,
+    sortOrder = "Desc"
+}
 
 -- Simple notification function
 local function showNotification(text)
@@ -132,21 +146,22 @@ local function sendAnimalWebhooks()
         valueCategory = "HIGH"
     end
     
-    -- Format money value
+    -- Format money value to match the image format (16.5M/s)
     local moneyPerSecFormatted
     if bestAnimal.Value >= 1000000000 then
-        moneyPerSecFormatted = string.format("💰 %.1fB/s", bestAnimal.Value / 1000000000)
+        moneyPerSecFormatted = string.format("%.1fB/s", bestAnimal.Value / 1000000000)
     elseif bestAnimal.Value >= 1000000 then
-        moneyPerSecFormatted = string.format("💰 %.1fM/s", bestAnimal.Value / 1000000000)
+        moneyPerSecFormatted = string.format("%.1fM/s", bestAnimal.Value / 1000000)
     elseif bestAnimal.Value >= 1000 then
-        moneyPerSecFormatted = string.format("💰 %.1fK/s", bestAnimal.Value / 1000)
+        moneyPerSecFormatted = string.format("%.1fK/s", bestAnimal.Value / 1000)
     else
-        moneyPerSecFormatted = string.format("💰 %d/s", bestAnimal.Value)
+        moneyPerSecFormatted = string.format("%d/s", bestAnimal.Value)
     end
 
-    -- Create embed
+    -- Create embed matching the image format exactly
     local embed = {
-        title = "🐾 **Brainrot Notify | KLPN Hub**",
+        title = "# KLPN Hub Notifier API",
+        description = "\n\n### Brainrot Notify | KLPN Hub",
         color = valueCategory == "HIGH" and 16711680 or 65280,
         fields = {
             {
@@ -157,20 +172,20 @@ local function sendAnimalWebhooks()
             {
                 name = "**Money per sec**",
                 value = moneyPerSecFormatted,
-                inline = true
-            },
-            {
-                name = "**Category**",
-                value = valueCategory == "HIGH" and "🔥 HIGH VALUE (10M+)" or "💰 LOW VALUE (0-10M)",
-                inline = true
+                inline = false
             },
             {
                 name = "**Players**",
-                value = string.format("👤 %d/%d", playersCount, Players.MaxPlayers),
-                inline = true
+                value = string.format("%d/%d", playersCount, Players.MaxPlayers),
+                inline = false
             },
             {
-                name = "**Job ID**",
+                name = "**Job ID (Mobile)**",
+                value = "```" .. jobId .. "```",
+                inline = false
+            },
+            {
+                name = "**Job ID (PC)**",
                 value = "```" .. jobId .. "```",
                 inline = false
             },
@@ -178,17 +193,22 @@ local function sendAnimalWebhooks()
                 name = "**Join Link**",
                 value = "[Click to Join](https://www.roblox.com/games/" .. placeId .. "?jobId=" .. jobId .. ")",
                 inline = false
+            },
+            {
+                name = "**Join Script (PC)**",
+                value = "```game:GetService(\"TeleportService\"):TeleportToPlaceInstance(" .. placeId .. ",\"" .. jobId .. "\", game.Players.LocalPlayer)```",
+                inline = false
             }
         },
         timestamp = DateTime.now():ToIsoDate(),
         footer = {
-            text = "Made by KLPN Hub • " .. os.date("%m/%d/%Y %I:%M %p")
+            text = "Made by KLPN Hub • " .. os.date("%m/%d/%Y %I:%M %p") .. " • Dzi6 o " .. os.date("%H:%M")
         }
     }
     
     local payload = {
         embeds = {embed},
-        username = "KLPN Hub Notifier - " .. valueCategory,
+        username = "KLPN Hub Notifier",
         avatar_url = "https://cdn.discordapp.com/attachments/1128833213672656988/1215321493282160730/standard_1.gif"
     }
     
@@ -228,19 +248,7 @@ local function sendAnimalWebhooks()
     return success
 end
 
--- Server hopping API functions
-local apiState = {
-    mainApiUses = 0,
-    cachedServers = {},
-    lastCacheUpdate = 0,
-    useCachedServers = false
-}
-
-local settings = {
-    minPlayers = 2,
-    sortOrder = "Desc"
-}
-
+-- EXACT COPY OF SERVER HOPPING LOGIC FROM 2ND SCRIPT
 local function checkAPIAvailability()
     local mainAPI = "https://games.roblox.com/v1/games/" .. ALLOWED_PLACE_ID .. "/servers/Public?sortOrder=" .. settings.sortOrder .. "&limit=100&excludeFullGames=true"
     local success, response = pcall(function() return game:HttpGet(mainAPI) end)
@@ -267,9 +275,7 @@ local function getServersFromAPI(baseUrl, isMainAPI)
         if not body.data then break end
         
         for _, v in body.data do
-            -- IMPORTANT: Filter out current server AND recently visited servers
-            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers 
-               and v.id ~= game.JobId and not table.find(recentServers, v.id) then
+            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId and not table.find(recentServers, v.id) then
                 table.insert(servers, v.id)
                 if not table.find(apiState.cachedServers, v.id) then
                     table.insert(apiState.cachedServers, v.id)
@@ -293,7 +299,6 @@ local function getCachedServers()
     local availableServers = {}
     
     for _, serverId in ipairs(apiState.cachedServers) do
-        -- Filter out current server AND recently visited servers from cache too
         if serverId ~= game.JobId and not table.find(recentServers, serverId) then
             table.insert(availableServers, serverId)
         end
@@ -322,75 +327,74 @@ local function getAvailableServers()
     return getCachedServers()
 end
 
+-- EXACT COPY of tryTeleportWithRetries from 2nd script
 local function tryTeleportWithRetries()
-    if not isRunning then return false end
+    if not isRunning then
+        return
+    end
 
     local attempts = 0
     local maxAttempts = 5
     while attempts < maxAttempts and isRunning do
         local servers = getAvailableServers()
         if #servers == 0 then
-            showNotification("No available servers found, retrying...")
-            task.wait(1)
+            task.wait(RETRY_DELAY)
             attempts = attempts + 1
             continue
         end
-        
         local randomServer = servers[math.random(1, #servers)]
-        showNotification("Attempting to hop to server: " .. randomServer)
-        
-        -- Add to recent servers BEFORE attempting teleport
-        addToRecentServers(randomServer)
-        
         local success, err = pcall(function()
             TPS:TeleportToPlaceInstance(ALLOWED_PLACE_ID, randomServer)
         end)
-        
         if success then
-            showNotification("Teleport initiated successfully!")
-            return true
+            return
         else
-            showNotification("Teleport failed: " .. tostring(err))
-            if not isRunning then return false end
-            task.wait(1)
+            if not isRunning then
+                return
+            end
+            task.wait(RETRY_DELAY)
             attempts = attempts + 1
         end
     end
-    return false
+    if isRunning then
+        isRunning = false
+    end
 end
 
--- Main loop
+-- EXACT COPY of main loop logic from 2nd script
+local function runServerCheck()
+    if not isRunning then return end
+    
+    -- Send webhooks for current server
+    local webhookSuccess = sendAnimalWebhooks()
+    
+    if webhookSuccess then
+        showNotification("Webhook sent, waiting before hopping...")
+        task.wait(0.5)
+    else
+        showNotification("No animals found or webhook failed, continuing...")
+        task.wait(1)
+    end
+    
+    if not isRunning then return end
+    
+    -- Hop to new server
+    showNotification("Searching for new server...")
+    tryTeleportWithRetries()
+end
+
+-- Main loop with EXACT timing from 2nd script
 local function mainLoop()
     showNotification("Starting continuous server hopping with webhooks...")
     showNotification("Recent servers tracking: " .. #recentServers .. " servers")
     
     while isRunning do
         -- Wait for game to load
+        task.wait(0.1)
         
+        runServerCheck()
         
-        -- Send webhooks for current server
-        local webhookSuccess = sendAnimalWebhooks()
-        
-        -- Wait for webhook to send
-        if webhookSuccess then
-            showNotification("Webhook sent, waiting before hopping...")
-            task.wait(0.5) -- Wait 2 seconds to ensure webhook is delivered
-        else
-            showNotification("No animals found or webhook failed, continuing...")
-            task.wait(1)
-        end
-        
-        -- Hop to new server
-        showNotification("Searching for new server...")
-        local hopSuccess = tryTeleportWithRetries()
-        
-        if not hopSuccess then
-            -- If hop failed, wait longer before retry
-            showNotification("All hop attempts failed, waiting 10 seconds before retry...")
-            task.wait(10)
-        else
-            -- If hop succeeded, the script will restart in new server
-            showNotification("Hop successful! Script will restart in new server.")
+        if not isRunning then
             break
         end
     end
