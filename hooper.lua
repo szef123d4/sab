@@ -423,3 +423,5 @@ task.spawn(keepAlive)
 _G.StopHopper = function()
     isRunning = false
 end
+
+print("bla")
