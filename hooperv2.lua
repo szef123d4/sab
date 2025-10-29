@@ -27,7 +27,7 @@ local currentServerJobId = nil
 local webhookSentForCurrentServer = false
 
 local settings = {
-    minGeneration = 1000000000,
+    minGeneration = 10000000000,
     targetNames = {},
     blacklistNames = {},
     targetRarity = "",
@@ -961,7 +961,7 @@ local function runServerCheck()
     local webhookSuccess = sendAnimalWebhooks()
     
     if webhookSuccess then
-        task.wait(0.5)
+        task.wait(3)
     else
         task.wait(1)
     end
