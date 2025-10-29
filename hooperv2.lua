@@ -1736,7 +1736,7 @@ local function createSettingsGUI()
     end
     
     if settings.autoStart then
-        task.wait(0.5)
+        task.wait(3.5)
         startHopping()
     end
 end
