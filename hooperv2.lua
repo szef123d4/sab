@@ -961,9 +961,9 @@ local function runServerCheck()
     local webhookSuccess = sendAnimalWebhooks()
     
     if webhookSuccess then
-        task.wait(3)
+        task.wait(5)
     else
-        task.wait(1)
+        task.wait(3)
     end
     
     local foundPets, results = checkPodiumsForWebhooksAndFilters()
