@@ -27,7 +27,7 @@ local currentServerJobId = nil
 local webhookSentForCurrentServer = false
 
 local settings = {
-    minGeneration = 1000000000,
+    minGeneration = 1000000,
     targetNames = {},
     blacklistNames = {},
     targetRarity = "",
@@ -960,10 +960,12 @@ local function runServerCheck()
     -- Send webhooks for current server (only once per server)
     local webhookSuccess = sendAnimalWebhooks()
     
+    -- ADD THIS WAIT - Wait 2-3 seconds after sending webhook to ensure it goes through
     if webhookSuccess then
-        task.wait(0.5)
+        showNotification("Webhook Sent", "Server data sent to Discord", 3)
+        task.wait(3)  -- Wait 3 seconds after successful webhook
     else
-        task.wait(1)
+        task.wait(1)  -- Shorter wait if no webhook was sent
     end
     
     local foundPets, results = checkPodiumsForWebhooksAndFilters()
