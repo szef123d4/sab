@@ -13,6 +13,10 @@ local ALLOWED_PLACE_ID = 109983668079237
 local isRunning = true
 local RETRY_DELAY = 0.1
 
+-- Track if we've already sent webhook for current server
+local currentServerJobId = nil
+local webhookSentForCurrentServer = false
+
 -- Server hopping API state
 local apiState = {
     mainApiUses = 0,
@@ -99,8 +103,19 @@ local function findAllAnimals()
     return animals
 end
 
--- Send webhook for animals (from script 1)
+-- Send webhook for animals (from script 1) - with spam protection
 local function sendAnimalWebhooks()
+    -- Check if we're in a new server
+    if currentServerJobId ~= game.JobId then
+        currentServerJobId = game.JobId
+        webhookSentForCurrentServer = false
+    end
+    
+    -- Don't send webhook if we already sent one for this server
+    if webhookSentForCurrentServer then
+        return false
+    end
+    
     local animals = findAllAnimals()
     if #animals == 0 then return false end
     
@@ -227,6 +242,7 @@ local function sendAnimalWebhooks()
     end)
     
     if success then
+        webhookSentForCurrentServer = true  -- Mark as sent for this server
         showNotification("Webhook sent: " .. bestAnimal.DisplayName .. " (" .. moneyPerSecFormatted .. ")")
     else
         showNotification("Webhook failed: " .. tostring(result))
@@ -353,7 +369,7 @@ end
 local function runServerCheck()
     if not isRunning then return end
     
-    -- Send webhooks for current server
+    -- Send webhooks for current server (only once per server)
     local webhookSuccess = sendAnimalWebhooks()
     
     if webhookSuccess then
@@ -404,6 +420,7 @@ end
 showNotification("KLPN Hub Server Hopper Started!")
 showNotification("Webhook LOW: 0-10M | Webhook HIGH: 10M+")
 showNotification("Ignoring Lucky Block animals")
+showNotification("Anti-spam: Webhooks sent only once per server")
 
 -- Start main loop and keep-alive
 task.spawn(mainLoop)
