@@ -17,7 +17,7 @@ local RETRY_DELAY = 0.1
 local currentServerJobId = nil
 local webhookSentForCurrentServer = false
 
--- Server hopping API state from script 2
+-- Server hopping API state from script 2 (1:1 copy)
 local apiState = {
     mainApiUses = 0,
     cachedServers = {},
@@ -29,6 +29,9 @@ local settings = {
     minPlayers = 2,
     sortOrder = "Desc"
 }
+
+-- Recent visited servers tracking (from my script)
+local recentVisited = {}
 
 -- Extract money value from generation text (from script 1)
 local function extractNumber(str)
@@ -243,7 +246,7 @@ local function sendAnimalWebhooks()
     return success
 end
 
--- Server hopping functions from script 2
+-- EXACT 1:1 SERVER HOPPING FUNCTIONS FROM MY SCRIPT
 local function checkAPIAvailability()
     local mainAPI = "https://games.roblox.com/v1/games/" .. ALLOWED_PLACE_ID .. "/servers/Public?sortOrder=" .. settings.sortOrder .. "&limit=100&excludeFullGames=true"
     local success, response = pcall(function() return game:HttpGet(mainAPI) end)
@@ -270,7 +273,7 @@ local function getServersFromAPI(baseUrl, isMainAPI)
         if not body.data then break end
         
         for _, v in body.data do
-            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId then
+            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId and not table.find(recentVisited, v.id) then
                 table.insert(servers, v.id)
                 if not table.find(apiState.cachedServers, v.id) then
                     table.insert(apiState.cachedServers, v.id)
@@ -292,9 +295,17 @@ end
 
 local function getCachedServers()
     local availableServers = {}
+    local recentCount = math.min(#recentVisited, 5)
+    local recentServers = {}
+    
+    for i = #recentVisited - recentCount + 1, #recentVisited do
+        if recentVisited[i] then
+            table.insert(recentServers, recentVisited[i])
+        end
+    end
     
     for _, serverId in ipairs(apiState.cachedServers) do
-        if serverId ~= game.JobId then
+        if not table.find(recentServers, serverId) and serverId ~= game.JobId then
             table.insert(availableServers, serverId)
         end
     end
@@ -337,6 +348,13 @@ local function tryTeleportWithRetries()
             continue
         end
         local randomServer = servers[math.random(1, #servers)]
+        
+        -- Add to recent visited (from my script)
+        table.insert(recentVisited, randomServer)
+        if #recentVisited > 10 then
+            table.remove(recentVisited, 1)
+        end
+        
         local success, err = pcall(function()
             TPS:TeleportToPlaceInstance(ALLOWED_PLACE_ID, randomServer)
         end)
@@ -355,7 +373,7 @@ local function tryTeleportWithRetries()
     end
 end
 
--- Main loop with webhooks integrated
+-- Main loop with webhooks integrated (using exact timing from my script)
 local function runServerCheck()
     if not isRunning then return end
     
@@ -370,25 +388,22 @@ local function runServerCheck()
     
     if not isRunning then return end
     
-    -- Hop to new server
+    -- Hop to new server (using exact function from my script)
     tryTeleportWithRetries()
 end
 
--- Main loop with EXACT timing from script 2
+-- Main loop with EXACT timing and structure from my script
 local function mainLoop()
     while isRunning do
-        -- Wait for game to load
-        task.wait(0.1)
-        
         runServerCheck()
-        
-        if not isRunning then
+        if #foundPodiumsData > 0 then
             break
         end
+        task.wait(0.1)
     end
 end
 
--- Auto-restart if hopping stops
+-- Auto-restart if hopping stops (from my script structure)
 local function keepAlive()
     while true do
         if not isRunning then
@@ -400,11 +415,11 @@ local function keepAlive()
     end
 end
 
--- Start everything
+-- Start everything (exact same structure as my script)
 task.spawn(mainLoop)
 task.spawn(keepAlive)
 
--- Emergency stop command
+-- Emergency stop command (from my script)
 _G.StopHopper = function()
     isRunning = false
 end
