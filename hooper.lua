@@ -1,9 +1,10 @@
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
+local Http = game:GetService("HttpService")
+local TPS = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
--- WEBHOOK URLs - REPLACE WITH YOUR ACTUAL WEBHOOKS
+-- WEBHOOK URLs
 local WEBHOOK_URL_LOW = "https://discord.com/api/webhooks/1433203505740513401/87dI6dzUJJ8SX8P_INJAmhhuodKYAUWtTSMaRb4S_WUP-kx89bfnBtDNnlL6JroU4h3S"
 local WEBHOOK_URL_HIGH = "https://discord.com/api/webhooks/1433203555631890552/OblORXzmJC0DhUSYlzn5mpTOcaDmUsiIyhrE9dVs9jFX87UDocrezJDHqaRyZ8OVVw4i"
 
@@ -11,9 +12,22 @@ local player = Players.LocalPlayer
 local ALLOWED_PLACE_ID = 109983668079237
 local isRunning = true
 
+-- Track recently visited servers (last 20 servers)
+local recentServers = {}
+local MAX_RECENT_SERVERS = 20
+
 -- Simple notification function
 local function showNotification(text)
     print("[ServerHopper] " .. text)
+end
+
+-- Add server to recent list
+local function addToRecentServers(serverId)
+    table.insert(recentServers, serverId)
+    -- Keep only the most recent servers
+    while #recentServers > MAX_RECENT_SERVERS do
+        table.remove(recentServers, 1)
+    end
 end
 
 -- Extract money value from generation text
@@ -87,7 +101,7 @@ end
 -- Send webhook for animals
 local function sendAnimalWebhooks()
     local animals = findAllAnimals()
-    if #animals == 0 then return end
+    if #animals == 0 then return false end
     
     local placeId = game.PlaceId
     local jobId = game.JobId
@@ -104,7 +118,7 @@ local function sendAnimalWebhooks()
         end
     end
     
-    if not bestAnimal then return end
+    if not bestAnimal then return false end
     
     -- Determine which webhook to use based on value
     local webhookUrl
@@ -180,7 +194,7 @@ local function sendAnimalWebhooks()
     
     -- Send webhook with error handling
     local success, result = pcall(function()
-        local jsonPayload = HttpService:JSONEncode(payload)
+        local jsonPayload = Http:JSONEncode(payload)
         
         if syn and syn.request then
             return syn.request({
@@ -214,28 +228,52 @@ local function sendAnimalWebhooks()
     return success
 end
 
--- Get available servers
-local function getAvailableServers()
+-- Server hopping API functions
+local apiState = {
+    mainApiUses = 0,
+    cachedServers = {},
+    lastCacheUpdate = 0,
+    useCachedServers = false
+}
+
+local settings = {
+    minPlayers = 2,
+    sortOrder = "Desc"
+}
+
+local function checkAPIAvailability()
+    local mainAPI = "https://games.roblox.com/v1/games/" .. ALLOWED_PLACE_ID .. "/servers/Public?sortOrder=" .. settings.sortOrder .. "&limit=100&excludeFullGames=true"
+    local success, response = pcall(function() return game:HttpGet(mainAPI) end)
+    return success and response ~= ""
+end
+
+local function getServersFromAPI(baseUrl, isMainAPI)
     local servers = {}
     local cursor = ""
-    local maxPages = 2
+    local maxPages = 3
+    
+    if isMainAPI then
+        apiState.mainApiUses = apiState.mainApiUses + 1
+    end
     
     for page = 1, maxPages do
-        local url = "https://games.roblox.com/v1/games/" .. ALLOWED_PLACE_ID .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true"
+        local url = baseUrl
         if cursor ~= "" then url = url .. "&cursor=" .. cursor end
         
-        local success, response = pcall(function() 
-            return game:HttpGet(url)
-        end)
-        
+        local success, response = pcall(function() return game:HttpGet(url) end)
         if not success then break end
         
-        local body = HttpService:JSONDecode(response)
+        local body = Http:JSONDecode(response)
         if not body.data then break end
         
-        for _, v in pairs(body.data) do
-            if v.playing and v.maxPlayers and v.playing >= 2 and v.playing < v.maxPlayers and v.id ~= game.JobId then
+        for _, v in body.data do
+            -- IMPORTANT: Filter out current server AND recently visited servers
+            if v.playing and v.maxPlayers and v.playing >= settings.minPlayers and v.playing < v.maxPlayers 
+               and v.id ~= game.JobId and not table.find(recentServers, v.id) then
                 table.insert(servers, v.id)
+                if not table.find(apiState.cachedServers, v.id) then
+                    table.insert(apiState.cachedServers, v.id)
+                end
             end
         end
         
@@ -243,59 +281,116 @@ local function getAvailableServers()
         if cursor == "" then break end
     end
     
+    while #apiState.cachedServers > 300 do
+        table.remove(apiState.cachedServers, 1)
+    end
+    
+    apiState.lastCacheUpdate = tick()
     return servers
 end
 
--- Server hopping function
-local function hopToNewServer()
-    local servers = getAvailableServers()
-    if #servers == 0 then
-        showNotification("No servers found, retrying...")
-        return false
+local function getCachedServers()
+    local availableServers = {}
+    
+    for _, serverId in ipairs(apiState.cachedServers) do
+        -- Filter out current server AND recently visited servers from cache too
+        if serverId ~= game.JobId and not table.find(recentServers, serverId) then
+            table.insert(availableServers, serverId)
+        end
     end
     
-    local randomServer = servers[math.random(1, #servers)]
-    showNotification("Hopping to server: " .. randomServer)
-    
-    local success, err = pcall(function()
-        TeleportService:TeleportToPlaceInstance(ALLOWED_PLACE_ID, randomServer, player)
-    end)
-    
-    if not success then
-        showNotification("Teleport failed: " .. tostring(err))
+    return availableServers
+end
+
+local function getAvailableServers()
+    if apiState.mainApiUses >= 3 or apiState.useCachedServers then
+        if not checkAPIAvailability() then
+            apiState.useCachedServers = true
+            return getCachedServers()
+        else
+            apiState.useCachedServers = false
+            apiState.mainApiUses = 0
+        end
     end
     
-    return success
+    local mainAPI = "https://games.roblox.com/v1/games/" .. ALLOWED_PLACE_ID .. "/servers/Public?sortOrder=" .. settings.sortOrder .. "&limit=100&excludeFullGames=true"
+    local servers = getServersFromAPI(mainAPI, true)
+    
+    if #servers > 0 then return servers end
+    
+    apiState.useCachedServers = true
+    return getCachedServers()
+end
+
+local function tryTeleportWithRetries()
+    if not isRunning then return false end
+
+    local attempts = 0
+    local maxAttempts = 5
+    while attempts < maxAttempts and isRunning do
+        local servers = getAvailableServers()
+        if #servers == 0 then
+            showNotification("No available servers found, retrying...")
+            task.wait(1)
+            attempts = attempts + 1
+            continue
+        end
+        
+        local randomServer = servers[math.random(1, #servers)]
+        showNotification("Attempting to hop to server: " .. randomServer)
+        
+        -- Add to recent servers BEFORE attempting teleport
+        addToRecentServers(randomServer)
+        
+        local success, err = pcall(function()
+            TPS:TeleportToPlaceInstance(ALLOWED_PLACE_ID, randomServer)
+        end)
+        
+        if success then
+            showNotification("Teleport initiated successfully!")
+            return true
+        else
+            showNotification("Teleport failed: " .. tostring(err))
+            if not isRunning then return false end
+            task.wait(1)
+            attempts = attempts + 1
+        end
+    end
+    return false
 end
 
 -- Main loop
 local function mainLoop()
-    showNotification("Starting continuous server hopping...")
+    showNotification("Starting continuous server hopping with webhooks...")
+    showNotification("Recent servers tracking: " .. #recentServers .. " servers")
     
     while isRunning do
-        -- Wait a bit for game to load
-       
+        -- Wait for game to load
+        
         
         -- Send webhooks for current server
         local webhookSuccess = sendAnimalWebhooks()
         
-        -- Wait for webhook to send (important!)
+        -- Wait for webhook to send
         if webhookSuccess then
             showNotification("Webhook sent, waiting before hopping...")
-            task.wait(1) -- Wait 2 seconds to ensure webhook is delivered
+            task.wait(0.5) -- Wait 2 seconds to ensure webhook is delivered
         else
-            task.wait(1) -- Shorter wait if webhook failed
+            showNotification("No animals found or webhook failed, continuing...")
+            task.wait(1)
         end
         
         -- Hop to new server
-        local hopSuccess = hopToNewServer()
+        showNotification("Searching for new server...")
+        local hopSuccess = tryTeleportWithRetries()
         
         if not hopSuccess then
             -- If hop failed, wait longer before retry
-            showNotification("Hop failed, waiting 5 seconds before retry...")
-            task.wait(5)
+            showNotification("All hop attempts failed, waiting 10 seconds before retry...")
+            task.wait(10)
         else
             -- If hop succeeded, the script will restart in new server
+            showNotification("Hop successful! Script will restart in new server.")
             break
         end
     end
@@ -318,12 +413,13 @@ end
 showNotification("KLPN Hub Server Hopper Started!")
 showNotification("Webhook LOW: 0-10M | Webhook HIGH: 10M+")
 showNotification("Ignoring Lucky Block animals")
+showNotification("Anti-duplicate: Won't rejoin recent " .. MAX_RECENT_SERVERS .. " servers")
 
 -- Start main loop and keep-alive
 task.spawn(mainLoop)
 task.spawn(keepAlive)
 
--- Emergency stop command (optional)
+-- Emergency stop command
 _G.StopHopper = function()
     isRunning = false
     showNotification("Hopper stopped by command")
