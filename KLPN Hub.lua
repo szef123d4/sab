@@ -36,7 +36,7 @@ local CONFIG = {
     STEALING_THRESHOLD = 20.5,
     
     -- Flying
-    FLY_SPEED = 70,
+    FLY_SPEED = 150,
     FLY_REMOTE_DELAY = 0.1,
     HOOK_TOOL_NAME = "Grapple Hook",
     FLY_KEY = Enum.KeyCode.F,
@@ -815,11 +815,19 @@ local function getInputVector(cam)
     return vec
 end
 
+local ragdollConnection = nil
+
 local function enableRagdollMovement(char)
+    -- Clean up old connection first
+    if ragdollConnection then
+        ragdollConnection:Disconnect()
+        ragdollConnection = nil
+    end
+    
     local humanoid = char:WaitForChild("Humanoid")
     local hrp = char:WaitForChild("HumanoidRootPart")
 
-    RunService.Heartbeat:Connect(function()
+    ragdollConnection = RunService.Heartbeat:Connect(function()
         if humanoid:GetState() == Enum.HumanoidStateType.Physics then
             local inputVector = getInputVector(workspace.CurrentCamera)
             if inputVector.Magnitude > 0 then
@@ -1078,6 +1086,7 @@ local function toggleHookFly()
     end
 end
 
+
 local function findBestAnimalForFlight()
     local bestValue = 0
     local bestPart = nil
@@ -1163,6 +1172,31 @@ local function flyToBestAnimal()
         return
     end
     
+    -- Get the actual position from the target
+    local targetPosition
+    if targetPart:IsA("Model") then
+        local base = targetPart:FindFirstChild("Base")
+        if base then
+            local decorations = base:FindFirstChild("Decorations")
+            if decorations then
+                local part = decorations:FindFirstChild("Part")
+                if part and part:IsA("BasePart") then
+                    targetPosition = part.Position
+                end
+            end
+        end
+        if not targetPosition then
+            targetPosition = targetPart.PrimaryPart and targetPart.PrimaryPart.Position or targetPart:GetPivot().Position
+        end
+    else
+        targetPosition = targetPart.Position
+    end
+    
+    if not targetPosition then
+        showNotification("Error", "Could not find target position", true)
+        return
+    end
+    
     local notificationText = animalData.DisplayName .. "\n" .. animalData.Generation
     if animalData.IsPriority then
         notificationText = notificationText .. "\n" .. animalData.PodiumName .. " (Delivery Box)"
@@ -1178,38 +1212,54 @@ local function flyToBestAnimal()
     startFlying()
     FlyingToAnimal = true
     
+    -- Start remote spam
+    local remoteThread = task.spawn(function()
+        while FlyingToAnimal do
+            fireRemotes()
+            task.wait(CONFIG.FLY_REMOTE_DELAY)
+        end
+    end)
+    
     task.spawn(function()
+        local startTime = tick()
+        
         while FlyingToAnimal and LocalFlying and targetPart and targetPart.Parent do
             local LV = root:FindFirstChild(LvName)
             local AO = root:FindFirstChild(AoName)
             
             if not LV or not AO then break end
             
-            local targetPos = targetPart.Position + Vector3.new(0, 10, 0)
-            local direction = (targetPos - root.Position).Unit
-            local distance = (targetPos - root.Position).Magnitude
+            local direction = (targetPosition - root.Position).Unit
+            local distance = (targetPosition - root.Position).Magnitude
             
-            if distance < 50 then
+            -- Stop after 2 seconds OR if within 15 studs
+            if distance < 15 or (tick() - startTime) >= 2 then
                 local arrivalText = "Reached " .. animalData.DisplayName
                 if animalData.IsPriority then
                     arrivalText = arrivalText .. " Delivery Box"
                 end
                 showNotification("Arrived", arrivalText)
                 stopFlying()
+                FlyingToAnimal = false
+                if remoteThread then
+                    task.cancel(remoteThread)
+                end
                 break
             end
             
-            local flySpeed = math.min(CONFIG.FLY_SPEED, distance * 2)
+            local flySpeed = math.min(CONFIG.FLY_SPEED, distance * 4)
             LV.VectorVelocity = direction * flySpeed
-            AO.CFrame = CFrame.lookAt(root.Position, targetPos)
+            AO.CFrame = CFrame.lookAt(root.Position, targetPosition)
             
             task.wait()
         end
         
         FlyingToAnimal = false
+        if remoteThread then
+            task.cancel(remoteThread)
+        end
     end)
 end
-
 -- ========== ANTI-DEATH & ANTI-KICK ==========
 
 -- ========== INFINITE JUMP (Anti-Cheat Bypass) ==========
@@ -1497,13 +1547,13 @@ local function enableMobileDesync()
 
         if tool and tool.Parent==backpack then
             humanoid:EquipTool(tool)
-            task.wait(0.5)
+            task.wait(0.1)
         end
 
-        if setfflag then setfflag("WorldStepMax", "-9999999999") end
+        if setfflag then setfflag("WorldStepMax", "-99999999999999") end
         task.wait(0.2)
         useItemRemote:FireServer()
-        task.wait(1)
+        task.wait(0.1)
         teleportRemote:FireServer()
         task.wait(2)
         if setfflag then setfflag("WorldStepMax", "-1") end
@@ -1812,21 +1862,68 @@ task.spawn(setupTransparentDecorations)
 
 -- Handle respawns
 player.CharacterAdded:Connect(function(newChar)
+    -- Reset ALL states completely
+    keys = {}
+    flyToggle = false
+    LocalFlying = false
+    FlyingToAnimal = false
+    ctrl = false
+    spaceKey = false
+    
+    -- Clean up ALL old connections
+    if ragdollConnection then
+        ragdollConnection:Disconnect()
+        ragdollConnection = nil
+    end
+    
+    if jumpRequestConnection then
+        jumpRequestConnection:Disconnect()
+        jumpRequestConnection = nil
+    end
+    
+    -- Clean up flying physics from old character
+    if root and root.Parent then
+        local LV = root:FindFirstChild(LvName)
+        local AO = root:FindFirstChild(AoName)
+        if LV then LV:Destroy() end
+        if AO then AO:Destroy() end
+    end
+    
+    task.wait(2) -- Wait longer for character to fully load
+    
+    -- Update ALL references to new character
     character = newChar
     humanoid = character:WaitForChild("Humanoid")
     root = character:WaitForChild("HumanoidRootPart")
     
+    -- Re-initialize ALL systems
     enableRagdollMovement(character)
+    setupJumpRequest()
     
-    if flyToggle then
-        task.wait(2)
-        toggleHookFly()
-    end
+    
 end)
 
 -- Cleanup
 player.CharacterRemoving:Connect(function()
-    stopFlying()
+    -- Stop ALL flying
+    flyToggle = false
+    LocalFlying = false
+    FlyingToAnimal = false
+    
+    -- Clean up flying physics
+    if root and root.Parent then
+        local LV = root:FindFirstChild(LvName)
+        local AO = root:FindFirstChild(AoName)
+        if LV then LV:Destroy() end
+        if AO then AO:Destroy() end
+    end
+    
+    -- Clean up connections
+    if ragdollConnection then
+        ragdollConnection:Disconnect()
+        ragdollConnection = nil
+    end
+    
     cleanupESP()
     if autoLazerThread then
         task.cancel(autoLazerThread)
@@ -1834,8 +1931,6 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
-
-
 
 
 
