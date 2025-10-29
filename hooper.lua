@@ -27,7 +27,7 @@ local currentServerJobId = nil
 local webhookSentForCurrentServer = false
 
 local settings = {
-    minGeneration = 1000000,
+    minGeneration = 1000000000,
     targetNames = {},
     blacklistNames = {},
     targetRarity = "",
