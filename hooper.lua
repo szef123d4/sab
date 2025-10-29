@@ -274,7 +274,7 @@ local function mainLoop()
     
     while isRunning do
         -- Wait a bit for game to load
-        task.wait(3)
+       
         
         -- Send webhooks for current server
         local webhookSuccess = sendAnimalWebhooks()
@@ -282,7 +282,7 @@ local function mainLoop()
         -- Wait for webhook to send (important!)
         if webhookSuccess then
             showNotification("Webhook sent, waiting before hopping...")
-            task.wait(2) -- Wait 2 seconds to ensure webhook is delivered
+            task.wait(1) -- Wait 2 seconds to ensure webhook is delivered
         else
             task.wait(1) -- Shorter wait if webhook failed
         end
