@@ -13,7 +13,9 @@ local ALLOWED_PLACE_ID = 109983668079237
 local isRunning = true
 local RETRY_DELAY = 0.1
 
-
+-- Track recently visited servers (EXACT from 2nd script)
+local recentServers = {}
+local MAX_RECENT_SERVERS = 20
 
 -- Server hopping API state (EXACT COPY from 2nd script)
 local apiState = {
@@ -33,7 +35,7 @@ local function showNotification(text)
     print("[ServerHopper] " .. text)
 end
 
--- Add server to recent list
+-- Add server to recent list (EXACT from 2nd script)
 local function addToRecentServers(serverId)
     table.insert(recentServers, serverId)
     -- Keep only the most recent servers
@@ -341,6 +343,10 @@ local function tryTeleportWithRetries()
             continue
         end
         local randomServer = servers[math.random(1, #servers)]
+        
+        -- Add to recent servers BEFORE attempting teleport (EXACT from 2nd script)
+        addToRecentServers(randomServer)
+        
         local success, err = pcall(function()
             TPS:TeleportToPlaceInstance(ALLOWED_PLACE_ID, randomServer)
         end)
@@ -384,7 +390,6 @@ end
 -- Main loop with EXACT timing from 2nd script
 local function mainLoop()
     showNotification("Starting continuous server hopping with webhooks...")
-    showNotification("Recent servers tracking: " .. #recentServers .. " servers")
     
     while isRunning do
         -- Wait for game to load
