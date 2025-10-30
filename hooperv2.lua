@@ -963,14 +963,14 @@ local function runServerCheck()
     -- ADD PROPER WAIT TIME HERE - This is the key fix
     if webhookSuccess then
         showNotification("Webhook Sent", "Waiting before checking pets...", 8)
-        local waitTime = 2
+        local waitTime = 0.2
         local startTime = tick()
         while tick() - startTime < waitTime and isRunning do
             task.wait(0.1)
         end
     else
         showNotification("No Animals", "No animals found in this server", 5)
-        local waitTime = 2
+        local waitTime = 0.2
         local startTime = tick()
         while tick() - startTime < waitTime and isRunning do
             task.wait(0.1)
@@ -1018,7 +1018,7 @@ local function runServerCheck()
     -- Add a small delay before hopping to next server
     showNotification("Hopping", "Moving to next server...", 2)
     local startTime = tick()
-    while tick() - startTime < 2 and isRunning do
+    while tick() - startTime < 0.2 and isRunning do
         task.wait(0.1)
     end
     
