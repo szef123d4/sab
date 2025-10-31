@@ -1572,6 +1572,14 @@ end
 
 local function setupCameraNoclip()
     Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+    
+    -- Keep it enabled
+    while true do
+        task.wait(3)
+        if Players.LocalPlayer.DevCameraOcclusionMode ~= Enum.DevCameraOcclusionMode.Invisicam then
+            Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        end
+    end
 end
 
 local function makeDecorationsTransparent(model)
@@ -1579,15 +1587,15 @@ local function makeDecorationsTransparent(model)
     if decorations then
         for _, part in ipairs(decorations:GetDescendants()) do
             if part:IsA("BasePart") then
-                part.Transparency = 0.4
-                if part:FindFirstChildOfClass("SurfaceAppearance") then
-                    part:FindFirstChildOfClass("SurfaceAppearance"):Destroy()
-                end
-                if part:FindFirstChildOfClass("Decal") then
-                    part:FindFirstChildOfClass("Decal"):Destroy()
-                end
-                if part:FindFirstChildOfClass("Texture") then
-                    part:FindFirstChildOfClass("Texture"):Destroy()
+                part.Transparency = 0.8
+                part.CanCollide = false
+                part.CastShadow = false
+                
+                -- Remove visual elements
+                for _, child in ipairs(part:GetChildren()) do
+                    if child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture") then
+                        child:Destroy()
+                    end
                 end
             end
         end
@@ -1597,25 +1605,38 @@ end
 local function setupTransparentDecorations()
     local plotsFolder = Workspace:WaitForChild("Plots")
     
-    setupCameraNoclip()
+    -- Start camera noclip
+    task.spawn(setupCameraNoclip)
     
+    -- Initial processing
     for _, model in ipairs(plotsFolder:GetChildren()) do
         makeDecorationsTransparent(model)
     end
 
+    -- Handle new plots
     plotsFolder.ChildAdded:Connect(function(model)
-        task.wait(0.5)
+        task.wait(1.5) -- Wait for full load
         makeDecorationsTransparent(model)
+        
+        -- Also check for decorations being added later
+        local connection
+        connection = model.DescendantAdded:Connect(function(descendant)
+            if descendant:IsA("BasePart") and descendant.Parent and descendant.Parent.Name == "Decorations" then
+                task.wait(0.2)
+                descendant.Transparency = 0.8
+                descendant.CanCollide = false
+            end
+        end)
     end)
 
+    -- Continuous updates
     while true do
-        task.wait(2)
+        task.wait(1)
         for _, model in ipairs(plotsFolder:GetChildren()) do
             makeDecorationsTransparent(model)
         end
     end
 end
-
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
@@ -1931,6 +1952,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
