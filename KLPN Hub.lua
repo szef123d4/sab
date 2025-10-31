@@ -1850,6 +1850,23 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+
+-- ========== REMOVE ACCESSORIES ==========
+task.spawn(function()
+    while true do
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character then
+                for _, accessory in ipairs(otherPlayer.Character:GetDescendants()) do
+                    if accessory:IsA("Accessory") then
+                        accessory:Destroy()
+                    end
+                end
+            end
+        end
+        task.wait(1)
+    end
+end)
+
 -- ========== INITIALIZATION ==========
 
 -- Setup anti-negative effects
@@ -1941,6 +1958,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
