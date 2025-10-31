@@ -1581,7 +1581,7 @@ local function setupTransparentDecorations()
                 if part:IsA("BasePart") then
                     pcall(function()
                         part.Transparency = 0.4
-                        part.CanCollide = false
+                        part.CanCollide = true
                         -- Remove visual elements
                         for _, child in ipairs(part:GetChildren()) do
                             if child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture") then
@@ -1944,3 +1944,4 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
