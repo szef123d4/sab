@@ -32,7 +32,7 @@ local CONFIG = {
     MAX_STABLE_TIME = 1,
     
     -- Speed Booster
-    BOOST_SPEED = 30,
+    BOOST_SPEED = 27,
     STEALING_THRESHOLD = 20.5,
     
     -- Flying
@@ -1931,6 +1931,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
