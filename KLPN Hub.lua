@@ -1570,37 +1570,56 @@ end
 
 -- ========== TRANSPARENT DECORATIONS ==========
 
--- Set camera occlusion
-game.Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+-- ========== TRANSPARENT DECORATIONS ==========
 
--- Simple aggressive transparency function
-local function makeAllDecorationsTransparent()
-    local plotsFolder = workspace.Plots
-    
-    for _, plot in pairs(plotsFolder:GetChildren()) do
-        local decorations = plot:FindFirstChild("Decorations")
-        if decorations then
-            for _, part in pairs(decorations:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.Transparency = 0.4
-                    part.CanCollide = true
+local function setupTransparentDecorations()
+    -- Set camera occlusion once
+    game.Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+
+    local function makeAllDecorationsTransparent()
+        local plotsFolder = workspace:FindFirstChild("Plots")
+        if not plotsFolder then return end
+        
+        for _, plot in pairs(plotsFolder:GetChildren()) do
+            local decorations = plot:FindFirstChild("Decorations")
+            if decorations then
+                for _, part in pairs(decorations:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        pcall(function()
+                            part.Transparency = 0.4
+                            part.CanCollide = false
+                        end)
+                    end
                 end
             end
         end
     end
-end
 
--- Run it immediately
-makeAllDecorationsTransparent()
-
--- Keep running it every second to combat any resets
-while true do
-    task.wait(1)
+    -- Run it immediately
     makeAllDecorationsTransparent()
-    
-    -- Also keep setting camera mode in case it resets
-    game.Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+
+    -- Use Heartbeat instead of while true loop
+    local decorationConnection
+    decorationConnection = RunService.Heartbeat:Connect(function()
+        makeAllDecorationsTransparent()
+        
+        -- Reset camera occlusion periodically
+        game.Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+    end)
+
+    -- Handle new plots being added
+    local plotsFolder = workspace:WaitForChild("Plots")
+    plotsFolder.ChildAdded:Connect(function(plot)
+        task.wait(1) -- Wait for plot to fully load
+        makeAllDecorationsTransparent()
+    end)
+
+    -- Return disconnect function for cleanup
+    return decorationConnection
 end
+
+-- Initialize transparent decorations properly
+local decorationConnection = setupTransparentDecorations()
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
@@ -1842,8 +1861,7 @@ startAntiNegativeEffects()
 -- Setup sentry resizer
 task.spawn(setupSentryResizer)
 
--- Setup transparent decorations
-task.spawn(setupTransparentDecorations)
+
 
 -- Handle respawns
 player.CharacterAdded:Connect(function(newChar)
@@ -1884,8 +1902,7 @@ player.CharacterAdded:Connect(function(newChar)
     -- Re-initialize ALL systems
     enableRagdollMovement(character)
     setupJumpRequest()
-    
-    
+    startSpeedControl()
 end)
 
 -- Cleanup
@@ -1916,6 +1933,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
