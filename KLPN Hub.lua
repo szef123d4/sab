@@ -1570,6 +1570,8 @@ end
 
 -- ========== TRANSPARENT DECORATIONS ==========
 
+-- ========== TRANSPARENT DECORATIONS ==========
+
 local function setupTransparentDecorations()
     -- Set camera occlusion
     Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
@@ -1581,7 +1583,6 @@ local function setupTransparentDecorations()
                 if part:IsA("BasePart") then
                     pcall(function()
                         part.Transparency = 0.4
-                        part.CanCollide = true
                         -- Remove visual elements
                         for _, child in ipairs(part:GetChildren()) do
                             if child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture") then
@@ -1628,7 +1629,6 @@ end
 
 -- Initialize transparent decorations
 local decorationConnection = setupTransparentDecorations()
-
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
@@ -1944,4 +1944,5 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
