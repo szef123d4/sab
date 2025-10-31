@@ -1867,6 +1867,60 @@ task.spawn(function()
     end
 end)
 
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+local equipInterval = 0.5 -- seconds between activations
+local loopRunning = false -- initial state: off
+
+local function getHumanoid()
+	local char = player.Character
+	if not char then return nil end
+	return char:FindFirstChildOfClass("Humanoid")
+end
+
+local function equipAndUse(tool)
+	if not tool or not tool:IsA("Tool") then return end
+	local humanoid = getHumanoid()
+	if not humanoid then return end
+
+	pcall(function()
+		humanoid:EquipTool(tool)
+	end)
+
+	pcall(function()
+		tool:Activate()
+	end)
+end
+
+-- Toggle with Q key
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode == Enum.KeyCode.Q then
+		loopRunning = not loopRunning
+		print(loopRunning and "Tool loop started" or "Tool loop stopped")
+	end
+end)
+
+-- Main loop
+task.spawn(function()
+	while true do
+		if loopRunning then
+			local backpack = player:FindFirstChildOfClass("Backpack")
+			if backpack then
+				local tool = backpack:FindFirstChild("Glitched Slap")
+				if tool then
+					equipAndUse(tool)
+				end
+			end
+		end
+		task.wait(equipInterval)
+	end
+end)
+
+
 -- ========== INITIALIZATION ==========
 
 -- Setup anti-negative effects
@@ -1958,6 +2012,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
