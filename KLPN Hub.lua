@@ -1,5 +1,3 @@
-
-
 if game.PlaceId ~= 109983668079237 then
     return
 end
@@ -1573,53 +1571,64 @@ end
 -- ========== TRANSPARENT DECORATIONS ==========
 
 local function setupTransparentDecorations()
-    -- Set camera occlusion once
-    game.Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+    -- Set camera occlusion
+    Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
 
-    local function makeAllDecorationsTransparent()
-        local plotsFolder = workspace:FindFirstChild("Plots")
-        if not plotsFolder then return end
-        
-        for _, plot in pairs(plotsFolder:GetChildren()) do
-            local decorations = plot:FindFirstChild("Decorations")
-            if decorations then
-                for _, part in pairs(decorations:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        pcall(function()
-                            part.Transparency = 0.4
-                            part.CanCollide = false
-                        end)
-                    end
+    local function makeDecorationsTransparent(model)
+        local decorations = model:FindFirstChild("Decorations")
+        if decorations then
+            for _, part in ipairs(decorations:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    pcall(function()
+                        part.Transparency = 0.4
+                        part.CanCollide = false
+                        -- Remove visual elements
+                        for _, child in ipairs(part:GetChildren()) do
+                            if child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture") then
+                                child:Destroy()
+                            end
+                        end
+                    end)
                 end
             end
         end
     end
 
-    -- Run it immediately
-    makeAllDecorationsTransparent()
+    local function processAllPlots()
+        local plotsFolder = Workspace:FindFirstChild("Plots")
+        if plotsFolder then
+            for _, model in ipairs(plotsFolder:GetChildren()) do
+                makeDecorationsTransparent(model)
+            end
+        end
+    end
+
+    -- Process existing plots immediately
+    processAllPlots()
+
+    -- Handle new plots being added
+    local plotsFolder = Workspace:WaitForChild("Plots")
+    plotsFolder.ChildAdded:Connect(function(model)
+        task.wait(0.5) -- Wait for plot to fully load
+        makeDecorationsTransparent(model)
+    end)
 
     -- Use Heartbeat instead of while true loop
     local decorationConnection
     decorationConnection = RunService.Heartbeat:Connect(function()
-        makeAllDecorationsTransparent()
+        -- Reset camera occlusion periodically (in case it gets reset)
+        Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
         
-        -- Reset camera occlusion periodically
-        game.Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        -- Process all plots every frame to combat any transparency resets
+        processAllPlots()
     end)
 
-    -- Handle new plots being added
-    local plotsFolder = workspace:WaitForChild("Plots")
-    plotsFolder.ChildAdded:Connect(function(plot)
-        task.wait(1) -- Wait for plot to fully load
-        makeAllDecorationsTransparent()
-    end)
-
-    -- Return disconnect function for cleanup
     return decorationConnection
 end
 
--- Initialize transparent decorations properly
+-- Initialize transparent decorations
 local decorationConnection = setupTransparentDecorations()
+
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
@@ -1861,7 +1870,8 @@ startAntiNegativeEffects()
 -- Setup sentry resizer
 task.spawn(setupSentryResizer)
 
-
+-- Setup transparent decorations
+task.spawn(setupTransparentDecorations)
 
 -- Handle respawns
 player.CharacterAdded:Connect(function(newChar)
@@ -1902,7 +1912,8 @@ player.CharacterAdded:Connect(function(newChar)
     -- Re-initialize ALL systems
     enableRagdollMovement(character)
     setupJumpRequest()
-    startSpeedControl()
+    
+    
 end)
 
 -- Cleanup
@@ -1933,15 +1944,3 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
-
-
-
-
-
-
-
-
-
-
-
-
