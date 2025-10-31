@@ -1567,9 +1567,6 @@ local function enableMobileDesync()
 end
 
 -- ========== TRANSPARENT DECORATIONS ==========
-
--- ========== TRANSPARENT DECORATIONS ==========
-
 -- ========== TRANSPARENT DECORATIONS ==========
 
 local function setupTransparentDecorations()
@@ -1944,5 +1941,6 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
