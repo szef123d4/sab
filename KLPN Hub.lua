@@ -1583,7 +1583,7 @@ local function makeAllDecorationsTransparent()
             for _, part in pairs(decorations:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.Transparency = 0.4
-                    part.CanCollide = false
+                    part.CanCollide = true
                 end
             end
         end
@@ -1916,6 +1916,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
