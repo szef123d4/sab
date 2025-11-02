@@ -1506,7 +1506,7 @@ end
 
 -- ========== MOBILE DESYNC ==========
 
-local function enableMobileDesync()
+local function enableMobileRemotes()
     local success, error = pcall(function()
         local backpack = player:WaitForChild("Backpack")
         local char = player.Character or player.CharacterAdded:Wait()
@@ -1539,26 +1539,23 @@ local function enableMobileDesync()
         end
         if not tool then
             for _, item in ipairs(backpack:GetChildren()) do
-                if item:IsA("Tool") then tool=item break end
+                if item:IsA("Tool") then 
+                    tool = item 
+                    break 
+                end
             end
         end
 
-        if tool and tool.Parent==backpack then
+        if tool and tool.Parent == backpack then
             humanoid:EquipTool(tool)
-            task.wait(0.1)
         end
 
-        if setfflag then setfflag("WorldStepMax", "-99999999999999") end
-        task.wait(0.2)
         useItemRemote:FireServer()
-        task.wait(0.1)
         teleportRemote:FireServer()
-        task.wait(0.1)
-        if setfflag then setfflag("WorldStepMax", "-1") end
-
-        showNotification("✅ Desync activated!", "")
+        showNotification("✅ Remotes triggered!", "")
         return true
     end)
+    
     if not success then
         showNotification("❌ Error: " .. tostring(error), "", true)
         return false
@@ -1566,7 +1563,8 @@ local function enableMobileDesync()
     return success
 end
 
--- ========== TRANSPARENT DECORATIONS ==========
+
+
 -- ========== TRANSPARENT DECORATIONS ==========
 
 local function setupTransparentDecorations()
@@ -2012,6 +2010,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
