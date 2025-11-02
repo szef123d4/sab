@@ -1553,7 +1553,7 @@ local function enableMobileDesync()
         useItemRemote:FireServer()
         task.wait(0.1)
         teleportRemote:FireServer()
-        task.wait(2)
+        task.wait(0.1)
         if setfflag then setfflag("WorldStepMax", "-1") end
 
         showNotification("✅ Desync activated!", "")
@@ -2012,6 +2012,7 @@ player.CharacterRemoving:Connect(function()
     end
     autoLazerEnabled = false
 end)
+
 
 
 
