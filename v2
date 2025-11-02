@@ -1,5 +1,3 @@
-
-
 if game.PlaceId ~= 109983668079237 then
     return
 end
@@ -32,11 +30,11 @@ local CONFIG = {
     MAX_STABLE_TIME = 1,
     
     -- Speed Booster
-    BOOST_SPEED = 30,
+    BOOST_SPEED = 27,
     STEALING_THRESHOLD = 20.5,
     
     -- Flying
-    FLY_SPEED = 70,
+    FLY_SPEED = 150,
     FLY_REMOTE_DELAY = 0.1,
     HOOK_TOOL_NAME = "Grapple Hook",
     FLY_KEY = Enum.KeyCode.F,
@@ -55,7 +53,11 @@ local CONFIG = {
     AUTO_LAZER_KEY = Enum.KeyCode.L,
     
     -- Web Slinger Kill
-    WEB_SLINGER_KEY = Enum.KeyCode.K
+    WEB_SLINGER_KEY = Enum.KeyCode.K,
+    
+    -- Safety Limits
+    MAX_FLIGHT_HEIGHT = 500,
+    MIN_FLIGHT_HEIGHT = -50
 }
 
 -- ========== GLOBAL VARIABLES ==========
@@ -67,6 +69,7 @@ local lastScanTime = 0
 
 -- Ragdoll Movement
 local keys = {}
+local lastRagdollState = false
 
 -- Plot ESP
 local activeESPs = {}
@@ -95,6 +98,11 @@ local blacklist = {}
 for _, name in ipairs(blacklistNames) do
     blacklist[string.lower(name)] = true
 end
+
+-- Turret Destroy
+local running = false
+local lastTurretCheck = 0
+local turretCheckInterval = 0.5
 
 -- ========== UTILITY FUNCTIONS ==========
 
@@ -190,11 +198,309 @@ local function extractNumber(str)
     return (tonumber(numberStr) or 0) * multiplier
 end
 
--- ========== WEB SLINGER KILL FUNCTION ==========
+-- ========== IMPROVED RAGDOLL MOVEMENT ==========
+local ragdollConnection = nil
 
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        keys[input.KeyCode] = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        keys[input.KeyCode] = false
+    end
+end)
+
+local function getInputVector(cam)
+    local vec = Vector3.new(0,0,0)
+    if keys[Enum.KeyCode.W] then vec = vec + cam.CFrame.LookVector end
+    if keys[Enum.KeyCode.S] then vec = vec - cam.CFrame.LookVector end
+    if keys[Enum.KeyCode.A] then vec = vec - cam.CFrame.RightVector end
+    if keys[Enum.KeyCode.D] then vec = vec + cam.CFrame.RightVector end
+    vec = Vector3.new(vec.X,0,vec.Z)
+    if vec.Magnitude > 0 then
+        vec = vec.Unit
+    end
+    return vec
+end
+
+local function forceRagdoll()
+    if character and humanoid then
+        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        task.wait(0.1)
+    end
+end
+
+local function enableRagdollMovement(char)
+    if ragdollConnection then
+        ragdollConnection:Disconnect()
+        ragdollConnection = nil
+    end
+    
+    local humanoid = char:WaitForChild("Humanoid")
+    local hrp = char:WaitForChild("HumanoidRootPart")
+
+    ragdollConnection = RunService.Heartbeat:Connect(function()
+        if not char or not humanoid or not hrp then
+            if ragdollConnection then
+                ragdollConnection:Disconnect()
+                ragdollConnection = nil
+            end
+            return
+        end
+        
+        local isRagdoll = humanoid:GetState() == Enum.HumanoidStateType.Physics
+        local inputVector = getInputVector(workspace.CurrentCamera)
+        
+        if isRagdoll and inputVector.Magnitude > 0 then
+            hrp.AssemblyLinearVelocity = Vector3.new(
+                inputVector.X * CONFIG.BASE_SPEED,
+                CONFIG.VERTICAL_BOOST,
+                inputVector.Z * CONFIG.BASE_SPEED
+            )
+            
+            if not lastRagdollState then
+                humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+            end
+            lastRagdollState = true
+        else
+            lastRagdollState = false
+        end
+    end)
+end
+
+-- ========== IMPROVED FLYING SYSTEM ==========
+local LvName = "flyLinearVelocity"
+local AoName = "flyAlignOrientation"
+local controlModule
+
+-- Cache remotes to prevent nil errors
+local cooldownEvent, useItemEvent
+local function getRemotes()
+    if not cooldownEvent or not useItemEvent then
+        local packages = ReplicatedStorage:WaitForChild("Packages")
+        local netFolder = packages:WaitForChild("Net")
+        cooldownEvent = netFolder:WaitForChild("RE/Tools/Cooldown")
+        useItemEvent = netFolder:WaitForChild("RE/UseItem")
+    end
+    return cooldownEvent, useItemEvent
+end
+
+local function fireRemotes()
+    local cooldown, useItem = getRemotes()
+    if cooldown and useItem then
+        pcall(function()
+            cooldown:FireServer("\006\001\bB\006\001\bB")
+            useItem:FireServer(0.4773959477742513)
+        end)
+    end
+end
+
+local function startFlying()
+    if LocalFlying then return end
+    
+    if not character or not root then
+        character = player.Character or player.CharacterAdded:Wait()
+        root = character:WaitForChild("HumanoidRootPart")
+        humanoid = character:WaitForChild("Humanoid")
+    end
+    
+    stopFlying()
+    
+    local LV = Instance.new("LinearVelocity")
+    local AO = Instance.new("AlignOrientation")
+
+    LV.MaxForce = math.huge
+    AO.MaxTorque = math.huge
+    AO.Mode = Enum.OrientationAlignmentMode.OneAttachment
+
+    LV.Attachment0 = root:WaitForChild("RootAttachment")
+    AO.Attachment0 = root:WaitForChild("RootAttachment")
+
+    LV.Name = LvName
+    AO.Name = AoName
+    
+    LV.Parent = root
+    AO.Parent = root
+
+    humanoid.PlatformStand = true
+    LocalFlying = true
+    
+    humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+end
+
+local function stopFlying()
+    LocalFlying = false
+    FlyingToAnimal = false
+
+    if humanoid then
+        humanoid.PlatformStand = false
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+
+    if root then
+        local LV = root:FindFirstChild(LvName)
+        local AO = root:FindFirstChild(AoName)
+
+        if LV then LV:Destroy() end
+        if AO then AO:Destroy() end
+    end
+    
+    local tool = character and character:FindFirstChild(CONFIG.HOOK_TOOL_NAME)
+    if tool then 
+        tool.Parent = player.Backpack 
+    end
+end
+
+local function toggleHookFly()
+    flyToggle = not flyToggle
+    if flyToggle then
+        local tool = player.Backpack:FindFirstChild(CONFIG.HOOK_TOOL_NAME)
+        if tool then 
+            tool.Parent = character 
+            task.wait(0.2)
+        end
+        
+        startFlying()
+        task.spawn(function()
+            while flyToggle and LocalFlying do
+                fireRemotes()
+                task.wait(CONFIG.FLY_REMOTE_DELAY)
+            end
+        end)
+        showNotification("Flying", "Flying enabled - Press F to toggle", false)
+    else
+        stopFlying()
+        showNotification("Flying", "Flying disabled", false)
+    end
+end
+
+-- Improved flying control loop
+RunService.Heartbeat:Connect(function()
+    if LocalFlying and root and character then
+        local LV = root:FindFirstChild(LvName)
+        local AO = root:FindFirstChild(AoName)
+        if not LV or not AO then 
+            if flyToggle then
+                startFlying()
+            end
+            return 
+        end
+
+        local moveVector = controlModule:GetMoveVector()
+        local direction = workspace.CurrentCamera.CFrame:VectorToWorldSpace(moveVector)
+
+        if moveVector.Magnitude > 0 then
+            LV.VectorVelocity = direction * CONFIG.FLY_SPEED
+        else
+            LV.VectorVelocity = Vector3.new(0, 0, 0)
+        end
+
+        if spaceKey then
+            LV.VectorVelocity = LV.VectorVelocity + Vector3.new(0, CONFIG.FLY_SPEED / 2, 0)
+        elseif ctrl then
+            LV.VectorVelocity = LV.VectorVelocity - Vector3.new(0, CONFIG.FLY_SPEED / 2, 0)
+        end
+
+        AO.CFrame = workspace.CurrentCamera.CFrame
+        
+        -- Enforce height limits
+        if root.Position.Y > CONFIG.MAX_FLIGHT_HEIGHT then
+            root.CFrame = CFrame.new(root.Position.X, CONFIG.MAX_FLIGHT_HEIGHT, root.Position.Z)
+        elseif root.Position.Y < CONFIG.MIN_FLIGHT_HEIGHT then
+            root.CFrame = CFrame.new(root.Position.X, CONFIG.MIN_FLIGHT_HEIGHT, root.Position.Z)
+        end
+    end
+end)
+
+-- ========== IMPROVED AUTO TURRET DESTROY ==========
+local function setupSentryResizer()
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.N then
+            running = not running
+            
+            if running then
+                showNotification("Turret Destroy", "Auto turret destroy enabled", false)
+                while running do
+                    local currentTime = tick()
+                    if currentTime - lastTurretCheck >= turretCheckInterval then
+                        lastTurretCheck = currentTime
+                        
+                        local character = player.Character
+                        if not character then 
+                            task.wait(0.1)
+                            continue 
+                        end
+                        
+                        local rootPart = character:FindFirstChild("HumanoidRootPart")
+                        local bat = character:FindFirstChild("Bat") or player.Backpack:FindFirstChild("Bat")
+                        
+                        if not rootPart or not bat then 
+                            task.wait(0.1)
+                            continue 
+                        end
+                        
+                        local foundSentry = false
+                        
+                        for _, obj in pairs(workspace:GetChildren()) do
+                            if not running then break end
+                            if obj.Name:find("Sentry_") then
+                                local setupFrame = obj:FindFirstChild("SetupFrame")
+                                local mainFrame = setupFrame and setupFrame:FindFirstChild("MainFrame")
+                                local timeText = mainFrame and mainFrame:FindFirstChild("Time")
+                                
+                                if timeText and timeText:IsA("TextLabel") then
+                                    local timeStr = timeText.Text:gsub("s!", ""):gsub("s", "")
+                                    local timeNum = tonumber(timeStr)
+                                    
+                                    if timeNum and timeNum >= 1 and timeNum <= 60 then
+                                        foundSentry = true
+                                        
+                                        local currentTool = character:FindFirstChildOfClass("Tool")
+                                        if currentTool ~= bat then
+                                            bat.Parent = character
+                                            task.wait(0.2)
+                                        end
+                                        
+                                        if bat.Parent == character then
+                                            if obj:IsA("Model") and obj.PrimaryPart then
+                                                obj.PrimaryPart.Size = Vector3.new(10, 10, 10)
+                                            end
+                                            
+                                            local turretRoot = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+                                            if turretRoot then
+                                                local hitCFrame = turretRoot.CFrame * CFrame.new(0, 0, -3)
+                                                rootPart.CFrame = hitCFrame
+                                                
+                                                rootPart.CFrame = CFrame.lookAt(rootPart.Position, turretRoot.Position)
+                                                
+                                                bat:Activate()
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        
+                        if not foundSentry then
+                            task.wait(1)
+                        end
+                    end
+                    task.wait()
+                end
+            else
+                showNotification("Turret Destroy", "Auto turret destroy disabled", false)
+            end
+        end
+    end)
+end
+
+-- ========== WEB SLINGER KILL FUNCTION ==========
 local WEB_SLINGER_TOOL_NAME = "Web Slinger"
 
--- Function to find closest player
 local function findClosestPlayer()
     local closestPlayer = nil
     local closestDistance = math.huge
@@ -219,25 +525,21 @@ local function findClosestPlayer()
     return closestPlayer, closestDistance
 end
 
--- Function to equip Web Slinger
 local function equipWebSlinger()
     local backpack = player:WaitForChild("Backpack")
     local character = player.Character
     
     if not character then return false end
     
-    -- Look for Web Slinger in backpack
     local webSlinger = backpack:FindFirstChild(WEB_SLINGER_TOOL_NAME)
     
     if webSlinger then
-        -- Unequip any currently equipped tools first
         for _, tool in pairs(character:GetChildren()) do
             if tool:IsA("Tool") then
                 tool.Parent = backpack
             end
         end
         
-        -- Equip Web Slinger
         webSlinger.Parent = character
         task.wait(0.2)
         return true
@@ -246,7 +548,6 @@ local function equipWebSlinger()
     end
 end
 
--- Function to use Web Slinger on target
 local function useWebSlingerOnTarget(targetPlayer)
     if not targetPlayer or not targetPlayer.Character then return false end
     
@@ -271,51 +572,39 @@ local function useWebSlingerOnTarget(targetPlayer)
     return success
 end
 
--- Function to do one teleport cycle (up and down once)
 local function doOneTeleportCycle(targetPlayer)
     if not targetPlayer or not targetPlayer.Character then return end
     
     local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     
-    -- Teleport up
     hrp.CFrame = hrp.CFrame + Vector3.new(0, 20, 0)
     task.wait(0.3)
     
-    -- Teleport down
     hrp.CFrame = hrp.CFrame + Vector3.new(0, -20, 0)
     task.wait(0.3)
 end
 
--- Main function to execute when K is pressed
 local function onKeyPress()
-    -- Equip Web Slinger
     local equipped = equipWebSlinger()
     if not equipped then
         showNotification("Error", "Couldn't find Web Slinger in backpack", true)
         return
     end
     
-    -- Find closest player
     local closestPlayer, distance = findClosestPlayer()
     if not closestPlayer then
         return
     end
     
-    -- Use Web Slinger on closest player
     local used = useWebSlingerOnTarget(closestPlayer)
     if used then
-        -- Wait a moment then do one teleport cycle
         task.wait(0.5)
         doOneTeleportCycle(closestPlayer)
     end
 end
 
 -- ========== AUTO LAZER CAP ==========
-
-local autoLazerEnabled = false
-local autoLazerThread = nil
-
 local function getLazerRemote()
     local remote = nil
     pcall(function()
@@ -380,13 +669,11 @@ local function autoEquipLaserCape()
     local backpack = player:WaitForChild("Backpack")
     local character = player.Character
     
-    -- Look specifically for "Laser Cape" in backpack
     local laserCape = backpack:FindFirstChild("Laser Cape")
     
-    -- Equip the Laser Cape if found
     if laserCape and character then
         laserCape.Parent = character
-        task.wait(0.1) -- Small delay to ensure tool is equipped
+        task.wait(0.1)
     end
     
     return laserCape ~= nil
@@ -394,7 +681,6 @@ end
 
 local function autoLazerWorker()
     while autoLazerEnabled do
-        -- Auto equip Laser Cape before firing
         autoEquipLaserCape()
         
         local target = findNearestAllowed()
@@ -413,7 +699,6 @@ local function toggleAutoLazer()
     autoLazerEnabled = not autoLazerEnabled
     
     if autoLazerEnabled then
-        -- Try to equip Laser Cape when enabling
         autoEquipLaserCape()
         autoLazerThread = task.spawn(autoLazerWorker)
     else
@@ -425,7 +710,6 @@ local function toggleAutoLazer()
 end
 
 -- ========== SERVER HOPPER ==========
-
 local function loadServerHopper()
     local success, result = pcall(function()
         loadstring(game:HttpGet("https://raw.githubusercontent.com/szef123d4/sab/refs/heads/main/serverhoopper"))()
@@ -440,73 +724,7 @@ local function loadServerHopper()
     end
 end
 
--- ========== SENTRY RESIZER ==========
-
-local UIS = game:GetService("UserInputService")
-local player = game:GetService("Players").LocalPlayer
-local character = player.Character
-local rootPart = character.HumanoidRootPart
-local running = false
-
-UIS.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.N then
-        running = not running
-        
-        if running then
-            while running do
-                local bat = character:FindFirstChild("Bat") or player.Backpack:FindFirstChild("Bat")
-                local foundSentry = false
-                
-                if bat then
-                    for _, obj in pairs(workspace:GetChildren()) do
-                        if not running then break end
-                        if obj.Name:find("Sentry_") then
-                            local setupFrame = obj:FindFirstChild("SetupFrame")
-                            local mainFrame = setupFrame and setupFrame:FindFirstChild("MainFrame")
-                            local timeText = mainFrame and mainFrame:FindFirstChild("Time")
-                            
-                            if timeText and timeText:IsA("TextLabel") then
-                                local timeStr = timeText.Text:gsub("s!", "")
-                                local timeNum = tonumber(timeStr)
-                                
-                                if timeNum and timeNum >= 1 and timeNum <= 60 then
-                                    foundSentry = true
-                                    
-                                    -- Try to equip bat, but only proceed if successful
-                                    local equipSuccess = pcall(function()
-                                        bat.Parent = character
-                                    end)
-                                    
-                                    if equipSuccess and bat.Parent == character then
-                                        -- Resize
-                                        if obj:IsA("Model") and obj.PrimaryPart then
-                                            obj.PrimaryPart.Size = Vector3.new(10, 10, 10)
-                                        end
-                                        
-                                        -- Teleport
-                                        local hitCFrame = rootPart.CFrame * CFrame.new(0, 0, -2)
-                                        if obj:IsA("Model") and obj.HumanoidRootPart then
-                                            obj.HumanoidRootPart.CFrame = hitCFrame
-                                        else
-                                            obj:PivotTo(hitCFrame)
-                                        end
-                                        
-                                        -- Hit
-                                        bat:Activate()
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-                wait()
-            end
-        end
-    end
-end)
-
 -- ========== ANTI-NEGATIVE EFFECTS ==========
-
 local function setupAntiNegativeEffects()
     local success, netPackage = pcall(function()
         return ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net")
@@ -609,7 +827,6 @@ local function startAntiNegativeEffects()
 end
 
 -- ========== BEST ANIMAL ESP ==========
-
 local function getAnimalId(animalData)
     return tostring(animalData.Value) .. "_" .. animalData.DisplayName
 end
@@ -787,54 +1004,7 @@ local function findBestAnimal()
     end
 end
 
--- ========== RAGDOLL MOVEMENT ==========
-
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        keys[input.KeyCode] = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        keys[input.KeyCode] = false
-    end
-end)
-
-local function getInputVector(cam)
-    local vec = Vector3.new(0,0,0)
-    if keys[Enum.KeyCode.W] then vec = vec + cam.CFrame.LookVector end
-    if keys[Enum.KeyCode.S] then vec = vec - cam.CFrame.LookVector end
-    if keys[Enum.KeyCode.A] then vec = vec - cam.CFrame.RightVector end
-    if keys[Enum.KeyCode.D] then vec = vec + cam.CFrame.RightVector end
-    vec = Vector3.new(vec.X,0,vec.Z)
-    if vec.Magnitude > 0 then
-        vec = vec.Unit
-    end
-    return vec
-end
-
-local function enableRagdollMovement(char)
-    local humanoid = char:WaitForChild("Humanoid")
-    local hrp = char:WaitForChild("HumanoidRootPart")
-
-    RunService.Heartbeat:Connect(function()
-        if humanoid:GetState() == Enum.HumanoidStateType.Physics then
-            local inputVector = getInputVector(workspace.CurrentCamera)
-            if inputVector.Magnitude > 0 then
-                hrp.Velocity = Vector3.new(
-                    inputVector.X * CONFIG.BASE_SPEED,
-                    CONFIG.VERTICAL_BOOST,
-                    inputVector.Z * CONFIG.BASE_SPEED
-                )
-            end
-        end
-    end)
-end
-
 -- ========== PLOT ESP ==========
-
 local function parseTime(text)
     if not text or text == "" then return 0 end
     text = text:lower():gsub("%s", "")
@@ -976,7 +1146,6 @@ local function updatePlotESP()
 end
 
 -- ========== SPEED BOOSTER ==========
-
 local function getMovementInput()
     local Char = player.Character or player.CharacterAdded:Wait()
     local HRP = Char:WaitForChild("HumanoidRootPart")
@@ -1008,76 +1177,7 @@ local function startSpeedControl()
     end)
 end
 
--- ========== FLYING SYSTEM ==========
-
-local LvName = "flyLinearVelocity"
-local AoName = "flyAlignOrientation"
-local controlModule = require(player.PlayerScripts.PlayerModule.ControlModule)
-
-local cooldownEvent = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RE/Tools/Cooldown")
-local useItemEvent = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net"):WaitForChild("RE/UseItem")
-
-local function fireRemotes()
-    cooldownEvent:FireServer("\006\001\bB\006\001\bB")
-    useItemEvent:FireServer(0.4773959477742513)
-end
-
-local function startFlying()
-    if LocalFlying then return end
-    LocalFlying = true
-
-    local LV = Instance.new("LinearVelocity", root)
-    local AO = Instance.new("AlignOrientation", root)
-
-    LV.MaxForce = math.huge
-    AO.MaxTorque = math.huge
-    AO.Mode = Enum.OrientationAlignmentMode.OneAttachment
-
-    LV.Attachment0 = root.RootAttachment
-    AO.Attachment0 = root.RootAttachment
-
-    LV.Name = LvName
-    AO.Name = AoName
-
-    humanoid.PlatformStand = true
-end
-
-local function stopFlying()
-    if not LocalFlying then return end
-    LocalFlying = false
-    FlyingToAnimal = false
-
-    local LV = root:FindFirstChild(LvName)
-    local AO = root:FindFirstChild(AoName)
-
-    humanoid.PlatformStand = false
-
-    if LV then LV:Destroy() end
-    if AO then AO:Destroy() end
-    
-    local tool = character:FindFirstChild(CONFIG.HOOK_TOOL_NAME)
-    if tool then tool.Parent = player.Backpack end
-end
-
-local function toggleHookFly()
-    flyToggle = not flyToggle
-    if flyToggle then
-        local tool = player.Backpack:FindFirstChild(CONFIG.HOOK_TOOL_NAME)
-        if tool then tool.Parent = character end
-        startFlying()
-        task.spawn(function()
-            while flyToggle do
-                fireRemotes()
-                task.wait(CONFIG.FLY_REMOTE_DELAY)
-            end
-        end)
-    else
-        stopFlying()
-        local tool = character:FindFirstChild(CONFIG.HOOK_TOOL_NAME)
-        if tool then tool.Parent = player.Backpack end
-    end
-end
-
+-- ========== FLY TO ANIMAL ==========
 local function findBestAnimalForFlight()
     local bestValue = 0
     local bestPart = nil
@@ -1163,6 +1263,30 @@ local function flyToBestAnimal()
         return
     end
     
+    local targetPosition
+    if targetPart:IsA("Model") then
+        local base = targetPart:FindFirstChild("Base")
+        if base then
+            local decorations = base:FindFirstChild("Decorations")
+            if decorations then
+                local part = decorations:FindFirstChild("Part")
+                if part and part:IsA("BasePart") then
+                    targetPosition = part.Position
+                end
+            end
+        end
+        if not targetPosition then
+            targetPosition = targetPart.PrimaryPart and targetPart.PrimaryPart.Position or targetPart:GetPivot().Position
+        end
+    else
+        targetPosition = targetPart.Position
+    end
+    
+    if not targetPosition then
+        showNotification("Error", "Could not find target position", true)
+        return
+    end
+    
     local notificationText = animalData.DisplayName .. "\n" .. animalData.Generation
     if animalData.IsPriority then
         notificationText = notificationText .. "\n" .. animalData.PodiumName .. " (Delivery Box)"
@@ -1178,42 +1302,54 @@ local function flyToBestAnimal()
     startFlying()
     FlyingToAnimal = true
     
+    local remoteThread = task.spawn(function()
+        while FlyingToAnimal do
+            fireRemotes()
+            task.wait(CONFIG.FLY_REMOTE_DELAY)
+        end
+    end)
+    
     task.spawn(function()
+        local startTime = tick()
+        
         while FlyingToAnimal and LocalFlying and targetPart and targetPart.Parent do
             local LV = root:FindFirstChild(LvName)
             local AO = root:FindFirstChild(AoName)
             
             if not LV or not AO then break end
             
-            local targetPos = targetPart.Position + Vector3.new(0, 10, 0)
-            local direction = (targetPos - root.Position).Unit
-            local distance = (targetPos - root.Position).Magnitude
+            local direction = (targetPosition - root.Position).Unit
+            local distance = (targetPosition - root.Position).Magnitude
             
-            if distance < 50 then
+            if distance < 15 or (tick() - startTime) >= 2 then
                 local arrivalText = "Reached " .. animalData.DisplayName
                 if animalData.IsPriority then
                     arrivalText = arrivalText .. " Delivery Box"
                 end
                 showNotification("Arrived", arrivalText)
                 stopFlying()
+                FlyingToAnimal = false
+                if remoteThread then
+                    task.cancel(remoteThread)
+                end
                 break
             end
             
-            local flySpeed = math.min(CONFIG.FLY_SPEED, distance * 2)
+            local flySpeed = math.min(CONFIG.FLY_SPEED, distance * 4)
             LV.VectorVelocity = direction * flySpeed
-            AO.CFrame = CFrame.lookAt(root.Position, targetPos)
+            AO.CFrame = CFrame.lookAt(root.Position, targetPosition)
             
             task.wait()
         end
         
         FlyingToAnimal = false
+        if remoteThread then
+            task.cancel(remoteThread)
+        end
     end)
 end
 
--- ========== ANTI-DEATH & ANTI-KICK ==========
-
--- ========== INFINITE JUMP (Anti-Cheat Bypass) ==========
-
+-- ========== INFINITE JUMP ==========
 local infiniteJumpEnabled = true
 local jumpRequestConnection
 
@@ -1253,16 +1389,7 @@ local function initializeJumpForCharacter(character)
     end)
 end
 
-player.CharacterAdded:Connect(function(character)
-    initializeJumpForCharacter(character)
-end)
-
-if player.Character then
-    initializeJumpForCharacter(player.Character)
-end
-
 -- ========== PLAYER ESP ==========
-
 local function getPlayerColor(targetPlayer)
     local hue = (targetPlayer.UserId % 360) / 360
     return Color3.fromHSV(hue, 1, 1)
@@ -1305,7 +1432,6 @@ end
 local function createPlayerBoundingBox(targetPlayer)
     if targetPlayer == player then return end
     
-    -- Clean up existing ESP
     if espObjects[targetPlayer] then
         if espObjects[targetPlayer].Box then
             espObjects[targetPlayer].Box:Destroy()
@@ -1347,7 +1473,6 @@ local function createPlayerBoundingBox(targetPlayer)
     nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
     nameLabel.Parent = billboard
 
-    -- Store the ESP data
     local espData = {
         Box = box,
         Connection = nil,
@@ -1356,10 +1481,8 @@ local function createPlayerBoundingBox(targetPlayer)
     
     espObjects[targetPlayer] = espData
 
-    -- Update function
     local function updateESP()
         if not char or not char.PrimaryPart or not char:FindFirstChild("Humanoid") then
-            -- Character is invalid, cleanup
             if espObjects[targetPlayer] then
                 espObjects[targetPlayer].Box:Destroy()
                 if espObjects[targetPlayer].Connection then
@@ -1372,12 +1495,10 @@ local function createPlayerBoundingBox(targetPlayer)
 
         local humanoid = char:FindFirstChild("Humanoid")
         if humanoid and humanoid.Health <= 0 then
-            -- Character is dead, hide ESP
             box.Transparency = 1
             billboard.Enabled = false
             return true
         else
-            -- Character is alive, show ESP
             box.Transparency = 0.6
             billboard.Enabled = true
             
@@ -1391,23 +1512,18 @@ local function createPlayerBoundingBox(targetPlayer)
         end
     end
 
-    -- Create heartbeat connection
     espData.Connection = RunService.Heartbeat:Connect(function()
         if not updateESP() then
-            -- ESP is no longer valid, stop updating
             espData.Connection:Disconnect()
         end
     end)
 
-    -- Listen for character respawns
     local characterAddedConnection
     characterAddedConnection = targetPlayer.CharacterAdded:Connect(function(newChar)
         characterAddedConnection:Disconnect()
         
-        -- Wait a bit for character to load
         task.wait(2)
         
-        -- Clean up old ESP and create new one
         if espObjects[targetPlayer] then
             espObjects[targetPlayer].Box:Destroy()
             espObjects[targetPlayer].Connection:Disconnect()
@@ -1457,7 +1573,6 @@ for _, existingPlayer in pairs(Players:GetPlayers()) do
 end
 
 -- ========== MOBILE DESYNC ==========
-
 local function enableMobileDesync()
     local success, error = pcall(function()
         local backpack = player:WaitForChild("Backpack")
@@ -1497,13 +1612,13 @@ local function enableMobileDesync()
 
         if tool and tool.Parent==backpack then
             humanoid:EquipTool(tool)
-            task.wait(0.5)
+            task.wait(0.1)
         end
 
-        if setfflag then setfflag("WorldStepMax", "-9999999999") end
+        if setfflag then setfflag("WorldStepMax", "-99999999999999") end
         task.wait(0.2)
         useItemRemote:FireServer()
-        task.wait(1)
+        task.wait(0.1)
         teleportRemote:FireServer()
         task.wait(2)
         if setfflag then setfflag("WorldStepMax", "-1") end
@@ -1519,55 +1634,54 @@ local function enableMobileDesync()
 end
 
 -- ========== TRANSPARENT DECORATIONS ==========
-
-local function setupCameraNoclip()
+local function setupTransparentDecorations()
     Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
-end
 
-local function makeDecorationsTransparent(model)
-    local decorations = model:FindFirstChild("Decorations")
-    if decorations then
-        for _, part in ipairs(decorations:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.Transparency = 0.4
-                if part:FindFirstChildOfClass("SurfaceAppearance") then
-                    part:FindFirstChildOfClass("SurfaceAppearance"):Destroy()
-                end
-                if part:FindFirstChildOfClass("Decal") then
-                    part:FindFirstChildOfClass("Decal"):Destroy()
-                end
-                if part:FindFirstChildOfClass("Texture") then
-                    part:FindFirstChildOfClass("Texture"):Destroy()
+    local function makeDecorationsTransparent(model)
+        local decorations = model:FindFirstChild("Decorations")
+        if decorations then
+            for _, part in ipairs(decorations:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    pcall(function()
+                        part.Transparency = 0.4
+                        for _, child in ipairs(part:GetChildren()) do
+                            if child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture") then
+                                child:Destroy()
+                            end
+                        end
+                    end)
                 end
             end
         end
     end
-end
 
-local function setupTransparentDecorations()
-    local plotsFolder = Workspace:WaitForChild("Plots")
-    
-    setupCameraNoclip()
-    
-    for _, model in ipairs(plotsFolder:GetChildren()) do
-        makeDecorationsTransparent(model)
+    local function processAllPlots()
+        local plotsFolder = Workspace:FindFirstChild("Plots")
+        if plotsFolder then
+            for _, model in ipairs(plotsFolder:GetChildren()) do
+                makeDecorationsTransparent(model)
+            end
+        end
     end
 
+    processAllPlots()
+
+    local plotsFolder = Workspace:WaitForChild("Plots")
     plotsFolder.ChildAdded:Connect(function(model)
         task.wait(0.5)
         makeDecorationsTransparent(model)
     end)
 
-    while true do
-        task.wait(2)
-        for _, model in ipairs(plotsFolder:GetChildren()) do
-            makeDecorationsTransparent(model)
-        end
-    end
+    local decorationConnection
+    decorationConnection = RunService.Heartbeat:Connect(function()
+        Players.LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        processAllPlots()
+    end)
+
+    return decorationConnection
 end
 
 -- ========== DISCORD WEBHOOK NOTIFIER ==========
-
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1431391715175956491/ho4G8cdYMUUGzfeeocrtwbOkZ4NmKZmpTj1HuqIjCQ-Av2-K-7zZ222YzOIQt6GM-E_A"
 
 local function sendRealAnimalWebhook()
@@ -1700,11 +1814,47 @@ local function sendRealAnimalWebhook()
     end)
 end
 
-task.wait(2)
-sendRealAnimalWebhook()
+-- ========== GLITCHED SLAP LOOP ==========
+local equipInterval = 0.5
+local loopRunning = false
+
+local function getHumanoid()
+	local char = player.Character
+	if not char then return nil end
+	return char:FindFirstChildOfClass("Humanoid")
+end
+
+local function equipAndUse(tool)
+	if not tool or not tool:IsA("Tool") then return end
+	local humanoid = getHumanoid()
+	if not humanoid then return end
+
+	pcall(function()
+		humanoid:EquipTool(tool)
+	end)
+
+	pcall(function()
+		tool:Activate()
+	end)
+end
+
+-- ========== REMOVE ACCESSORIES ==========
+task.spawn(function()
+    while true do
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character then
+                for _, accessory in ipairs(otherPlayer.Character:GetDescendants()) do
+                    if accessory:IsA("Accessory") then
+                        accessory:Destroy()
+                    end
+                end
+            end
+        end
+        task.wait(1)
+    end
+end)
 
 -- ========== INPUT HANDLERS ==========
-
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
 
@@ -1734,13 +1884,15 @@ UserInputService.InputBegan:Connect(function(input, processed)
         spaceKey = true
     elseif input.KeyCode == Enum.KeyCode.LeftControl and LocalFlying then
         ctrl = true
+    -- Glitched Slap Loop
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        loopRunning = not loopRunning
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input, processed)
     if processed then return end
     
-    -- Flying HOLD controls
     if input.KeyCode == Enum.KeyCode.Space and LocalFlying then
         spaceKey = false
     elseif input.KeyCode == Enum.KeyCode.LeftControl and LocalFlying then
@@ -1748,85 +1900,136 @@ UserInputService.InputEnded:Connect(function(input, processed)
     end
 end)
 
--- ========== MAIN LOOPS ==========
+-- Glitched Slap Loop
+task.spawn(function()
+	while true do
+		if loopRunning then
+			local backpack = player:FindFirstChildOfClass("Backpack")
+			if backpack then
+				local tool = backpack:FindFirstChild("Glitched Slap")
+				if tool then
+					equipAndUse(tool)
+				end
+			end
+		end
+		task.wait(equipInterval)
+	end
+end)
 
+-- ========== MAIN LOOPS ==========
 -- Best Animal ESP Loop
 RunService.Heartbeat:Connect(findBestAnimal)
 
 -- Plot ESP Loop
 RunService.Heartbeat:Connect(updatePlotESP)
 
--- Flying Control Loop
-RunService.Heartbeat:Connect(function()
-    if LocalFlying then
-        local LV = root:FindFirstChild(LvName)
-        local AO = root:FindFirstChild(AoName)
-        if not LV or not AO then return end
-
-        local moveVector = controlModule:GetMoveVector()
-        local direction = workspace.CurrentCamera.CFrame:VectorToWorldSpace(moveVector)
-
-        if moveVector.Magnitude ~= 0 then
-            TweenService:Create(LV, TweenInfo.new(0.3), { VectorVelocity = direction * CONFIG.FLY_SPEED }):Play()
-        else
-            TweenService:Create(LV, TweenInfo.new(0.3), { VectorVelocity = Vector3.new(0, 0, 0) }):Play()
+-- ========== FEATURE HEALTH MONITOR ==========
+local function monitorFeatures()
+    RunService.Heartbeat:Connect(function()
+        -- Check if flying objects exist when they should
+        if LocalFlying and root then
+            local LV = root:FindFirstChild(LvName)
+            local AO = root:FindFirstChild(AoName)
+            
+            if not LV or not AO then
+                if flyToggle then
+                    startFlying()
+                end
+            end
         end
-
-        if spaceKey then
-            LV.VectorVelocity = LV.VectorVelocity + Vector3.new(0, CONFIG.FLY_SPEED / 15, 0)
-        elseif ctrl then
-            LV.VectorVelocity = LV.VectorVelocity - Vector3.new(0, CONFIG.FLY_SPEED / 15, 0)
+        
+        -- Check ragdoll state
+        if humanoid and lastRagdollState then
+            if humanoid:GetState() ~= Enum.HumanoidStateType.Physics then
+                forceRagdoll()
+            end
         end
-
-        if moveVector.Magnitude > 0 then
-            AO.RigidityEnabled = true
-            AO.Responsiveness = 50
-        else
-            AO.RigidityEnabled = false
-            AO.Responsiveness = 10
-        end
-
-        AO.CFrame = workspace.CurrentCamera.CFrame
-    end
-end)
+    end)
+end
 
 -- ========== INITIALIZATION ==========
-
--- Setup anti-negative effects
-setupAntiNegativeEffects()
-
--- Enable ragdoll movement
-enableRagdollMovement(character)
-
--- Start speed control
-startSpeedControl()
-
--- Start anti-negative effects protection
-startAntiNegativeEffects()
-
--- Setup sentry resizer
-task.spawn(setupSentryResizer)
-
--- Setup transparent decorations
-task.spawn(setupTransparentDecorations)
+local function initializeScript()
+    -- Load control module for flying
+    controlModule = require(player.PlayerScripts.PlayerModule.ControlModule)
+    
+    -- Setup systems
+    setupAntiNegativeEffects()
+    enableRagdollMovement(character)
+    startSpeedControl()
+    startAntiNegativeEffects()
+    setupSentryResizer()
+    setupTransparentDecorations()
+    monitorFeatures()
+    
+    -- Initialize jump
+    if player.Character then
+        initializeJumpForCharacter(player.Character)
+    end
+    
+    -- Send webhook after delay
+    task.wait(2)
+    sendRealAnimalWebhook()
+    
+    showNotification("KLPN Hub", "All features loaded successfully!", false)
+end
 
 -- Handle respawns
 player.CharacterAdded:Connect(function(newChar)
+    keys = {}
+    flyToggle = false
+    LocalFlying = false
+    FlyingToAnimal = false
+    ctrl = false
+    spaceKey = false
+    loopRunning = false
+    
+    if ragdollConnection then
+        ragdollConnection:Disconnect()
+        ragdollConnection = nil
+    end
+    
+    if jumpRequestConnection then
+        jumpRequestConnection:Disconnect()
+        jumpRequestConnection = nil
+    end
+    
+    if root and root.Parent then
+        local LV = root:FindFirstChild(LvName)
+        local AO = root:FindFirstChild(AoName)
+        if LV then LV:Destroy() end
+        if AO then AO:Destroy() end
+    end
+    
+    task.wait(2)
+    
     character = newChar
     humanoid = character:WaitForChild("Humanoid")
     root = character:WaitForChild("HumanoidRootPart")
     
     enableRagdollMovement(character)
-    
-    if flyToggle then
-        task.wait(2)
-        toggleHookFly()
-    end
+    setupJumpRequest()
+    initializeJumpForCharacter(character)
 end)
 
 -- Cleanup
 player.CharacterRemoving:Connect(function()
-    stopFlying()
+    flyToggle = false
+    LocalFlying = false
+    FlyingToAnimal = false
+    loopRunning = false
+    
+    if root and root.Parent then
+        local LV = root:FindFirstChild(LvName)
+        local AO = root:FindFirstChild(AoName)
+        if LV then LV:Destroy() end
+        if AO then AO:Destroy() end
+    end
+    
+    if ragdollConnection then
+        ragdollConnection:Disconnect()
+        ragdollConnection = nil
+    end
+    
     cleanupESP()
     if autoLazerThread then
         task.cancel(autoLazerThread)
@@ -1835,11 +2038,5 @@ player.CharacterRemoving:Connect(function()
     autoLazerEnabled = false
 end)
 
-
-
-
-
-
-
-
-
+-- Start the script
+initializeScript()
